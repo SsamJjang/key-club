@@ -43,8 +43,7 @@ export default function Login() {
             Caring — our&nbsp;way of&nbsp;life.
           </h1>
           <p className="mt-6 max-w-md text-navy-200">
-            Event news, service hours, and the whole member directory in one place. Sign in with
-            your school Google account to pick up where the club left off.
+            The official GCS Key Club website. Events, news, and volunteers in a glance. Sign in with your school email to continue.
           </p>
         </div>
 

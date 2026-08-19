@@ -46,9 +46,23 @@ export function relative(iso: string | null | undefined) {
   return 'just now'
 }
 
-export function isUpcoming(post: { starts_at: string | null; ends_at: string | null }) {
+type Dated = { starts_at: string | null; ends_at: string | null }
+
+/**
+ * True only when the event has a date AND that date is in the past.
+ *
+ * An undated event ("ongoing canned food drive") has NOT ended — treating a
+ * missing date as "over" is what used to lock sign-ups on every event whose
+ * date field was left blank.
+ */
+export function hasEnded(post: Dated) {
   const end = post.ends_at ?? post.starts_at
-  return end ? new Date(end).getTime() >= Date.now() : false
+  return end ? new Date(end).getTime() < Date.now() : false
+}
+
+/** Anything that has not ended, including undated events. */
+export function isUpcoming(post: Dated) {
+  return !hasEnded(post)
 }
 
 export function initials(name: string) {

@@ -3,8 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { EventSignup, Post } from '../lib/types'
-import { formatDate, formatDateTime, formatTime, isUpcoming } from '../lib/format'
-import { renderMarkdown } from '../lib/markdown'
+import { formatDate, formatDateTime, formatTime, hasEnded } from '../lib/format'
+import { renderBody } from '../lib/markdown'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
 
 export default function PostDetail() {
@@ -50,7 +50,7 @@ export default function PostDetail() {
     }
   }, [slug, loadSignups])
 
-  const html = useMemo(() => (post ? renderMarkdown(post.body) : ''), [post])
+  const html = useMemo(() => (post ? renderBody(post.body) : ''), [post])
   const mine = signups.some((s) => s.user_id === profile?.id)
   const full = Boolean(post?.capacity && signups.length >= post.capacity)
 
@@ -87,7 +87,24 @@ export default function PostDetail() {
   }
 
   const isEvent = post.category === 'event'
-  const open = isEvent && post.signup_open && isUpcoming(post)
+
+  // Three independent reasons a member can't join, each with its own message —
+  // "closed" for all of them is what made this confusing to debug.
+  const ended = hasEnded(post)
+  const closed = !post.signup_open
+  const canJoin = isEvent && !ended && !closed && !full
+
+  const rsvpLabel = busy
+    ? 'Saving…'
+    : mine
+      ? 'Cancel my spot'
+      : ended
+        ? 'This event has passed'
+        : closed
+          ? 'Sign-ups are closed'
+          : full
+            ? 'Event is full'
+            : "I'm going"
 
   return (
     <article className="rise mx-auto max-w-3xl">
@@ -146,8 +163,14 @@ export default function PostDetail() {
             <div>
               <dt className="label">When</dt>
               <dd className="font-medium">
-                {formatDateTime(post.starts_at)}
-                {post.ends_at && ` – ${formatTime(post.ends_at)}`}
+                {post.starts_at ? (
+                  <>
+                    {formatDateTime(post.starts_at)}
+                    {post.ends_at && ` – ${formatTime(post.ends_at)}`}
+                  </>
+                ) : (
+                  <span className="muted">Date to be announced</span>
+                )}
               </dd>
             </div>
             {post.location && (
@@ -181,23 +204,25 @@ export default function PostDetail() {
             <button
               type="button"
               onClick={() => void toggleRsvp()}
-              disabled={busy || (!open && !mine) || (full && !mine)}
+              disabled={busy || (!canJoin && !mine)}
               className={`btn ${mine ? 'btn-ghost' : 'btn-primary'}`}
             >
-              {busy
-                ? 'Saving…'
-                : mine
-                  ? 'Cancel my spot'
-                  : full
-                    ? 'Event is full'
-                    : open
-                      ? "I'm going"
-                      : 'Sign-ups closed'}
+              {rsvpLabel}
             </button>
-            {mine && (
+            {mine ? (
               <span className="text-sm text-emerald-700 dark:text-emerald-300">
                 You’re signed up. See you there.
               </span>
+            ) : (
+              !canJoin && (
+                <span className="text-sm muted">
+                  {ended
+                    ? 'Sign-ups end once the event is over.'
+                    : closed
+                      ? 'An officer has closed sign-ups for this event.'
+                      : 'Every spot has been taken.'}
+                </span>
+              )
             )}
           </div>
 

@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Layout from './components/Layout'
@@ -12,8 +13,11 @@ import MemberProfile from './pages/MemberProfile'
 import MyProfile from './pages/MyProfile'
 import Hours from './pages/Hours'
 import Admin from './pages/Admin'
-import PostEditor from './pages/PostEditor'
-import { EmptyState } from './components/ui'
+import { EmptyState, Spinner } from './components/ui'
+
+// The rich text editor pulls in ProseMirror, which roughly triples the
+// bundle. Only officers opening the editor should pay for it.
+const PostEditor = lazy(() => import('./pages/PostEditor'))
 
 /**
  * Hash routing on purpose: the app ships as static files to Cloudflare
@@ -55,7 +59,9 @@ export default function App() {
               path="admin/posts/:id"
               element={
                 <ProtectedRoute adminOnly>
-                  <PostEditor />
+                  <Suspense fallback={<Spinner label="Loading the editor" />}>
+                    <PostEditor />
+                  </Suspense>
                 </ProtectedRoute>
               }
             />

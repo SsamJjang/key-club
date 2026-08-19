@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
-import { formatDate, formatTime } from '../lib/format'
+import { formatDate, formatTime, hasEnded } from '../lib/format'
 import { EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
+import EventCalendar from '../components/EventCalendar'
 
 interface EventRow extends Post {
   going: number
@@ -15,6 +16,9 @@ export default function Events() {
   const { profile } = useAuth()
   const [rows, setRows] = useState<EventRow[]>([])
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
+  const [view, setView] = useState<'list' | 'calendar'>(
+    () => (localStorage.getItem('kc-events-view') as 'list' | 'calendar') ?? 'calendar',
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,17 +58,18 @@ export default function Events() {
     }
   }, [profile?.id])
 
-  const { upcoming, past } = useMemo(() => {
-    const now = Date.now()
-    const isPast = (e: EventRow) => {
-      const end = e.ends_at ?? e.starts_at
-      return end ? new Date(end).getTime() < now : false
-    }
-    return {
-      upcoming: rows.filter((e) => !isPast(e)),
-      past: rows.filter(isPast).reverse(),
-    }
-  }, [rows])
+  const { upcoming, past } = useMemo(
+    () => ({
+      upcoming: rows.filter((e) => !hasEnded(e)),
+      past: rows.filter(hasEnded).reverse(),
+    }),
+    [rows],
+  )
+
+  function chooseView(next: 'list' | 'calendar') {
+    setView(next)
+    localStorage.setItem('kc-events-view', next)
+  }
 
   const list = tab === 'upcoming' ? upcoming : past
 
@@ -76,19 +81,42 @@ export default function Events() {
         subtitle="Service projects, meetings, and everything worth showing up for."
       />
 
-      <div className="mb-8 inline-flex rounded-xl border border-[var(--line)] p-1">
-        {(['upcoming', 'past'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition ${
-              tab === t ? 'bg-navy-600 text-white' : 'muted'
-            }`}
-          >
-            {t} ({t === 'upcoming' ? upcoming.length : past.length})
-          </button>
-        ))}
+      <div className="mb-8 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-xl border border-[var(--line)] p-1">
+          {([
+            ['calendar', '🗓️ Calendar'],
+            ['list', '☰ List'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => chooseView(key)}
+              aria-pressed={view === key}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                view === key ? 'bg-navy-600 text-white' : 'muted'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === 'list' && (
+          <div className="inline-flex rounded-xl border border-[var(--line)] p-1">
+            {(['upcoming', 'past'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition ${
+                  tab === t ? 'bg-navy-600 text-white' : 'muted'
+                }`}
+              >
+                {t} ({t === 'upcoming' ? upcoming.length : past.length})
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -99,6 +127,8 @@ export default function Events() {
 
       {loading ? (
         <Spinner />
+      ) : view === 'calendar' ? (
+        <EventCalendar events={rows} />
       ) : list.length === 0 ? (
         <EmptyState icon="🗓️" title={`No ${tab} events`}>
           {tab === 'upcoming'
