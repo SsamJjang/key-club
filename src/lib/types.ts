@@ -2,6 +2,12 @@ export type Role = 'member' | 'officer' | 'admin'
 export type Category = 'news' | 'notice' | 'event'
 export type HoursStatus = 'pending' | 'approved' | 'rejected'
 
+export interface BoardPosition {
+  id: string
+  label: string
+  sort_order: number
+}
+
 export interface Profile {
   id: string
   email: string
@@ -10,6 +16,8 @@ export interface Profile {
   graduation_year: number | null
   phone: string | null
   role: Role
+  board_position: string | null
+  board?: BoardPosition | null
   avatar_url: string | null
   pronouns: string | null
   title: string | null
@@ -25,6 +33,7 @@ export interface Member {
   graduation_year: number | null
   phone: string | null
   role: Role
+  board_position: string | null
   active: boolean
   notes: string | null
   created_at: string

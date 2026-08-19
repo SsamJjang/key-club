@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { MemberHours, Post, Profile } from '../lib/types'
+import type { BoardPosition, MemberHours, Post, Profile } from '../lib/types'
 import { formatDate, formatPhone, gradeLabel } from '../lib/format'
-import { Avatar, EmptyState, RoleBadge, Spinner, Stat } from '../components/ui'
+import { Avatar, BoardBadge, EmptyState, RoleBadge, Spinner, Stat } from '../components/ui'
 
 export default function MemberProfile() {
   const { id } = useParams<{ id: string }>()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [hours, setHours] = useState<MemberHours | null>(null)
   const [events, setEvents] = useState<Post[]>([])
+  const [board, setBoard] = useState<BoardPosition | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,9 +21,14 @@ export default function MemberProfile() {
       supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
       supabase.from('member_hours').select('*').eq('user_id', id).maybeSingle(),
       supabase.from('event_signups').select('post:posts!post_id(*)').eq('user_id', id),
-    ]).then(([p, h, s]) => {
+      supabase.from('board_positions').select('*'),
+    ]).then(([p, h, s, b]) => {
       if (cancelled) return
-      setProfile(p.data as Profile | null)
+      const found = p.data as Profile | null
+      setProfile(found)
+      setBoard(
+        ((b.data as BoardPosition[]) ?? []).find((x) => x.id === found?.board_position) ?? null,
+      )
       setHours(h.data as MemberHours | null)
       setEvents(
         ((s.data as { post: Post | null }[] | null) ?? [])
@@ -54,6 +60,7 @@ export default function MemberProfile() {
             <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
               {profile.full_name}
             </h1>
+            <BoardBadge label={board?.label} />
             <RoleBadge role={profile.role} />
           </div>
           <p className="mt-1 text-sm muted">

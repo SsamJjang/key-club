@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { MemberHours, Post } from '../lib/types'
+import type { BoardPosition, MemberHours, Post } from '../lib/types'
 import { formatDate, gradeLabel } from '../lib/format'
-import { Avatar, Notice, PageHeader, RoleBadge, Spinner, Stat } from '../components/ui'
+import { Avatar, BoardBadge, Notice, PageHeader, RoleBadge, Spinner, Stat } from '../components/ui'
 import ImageUpload from '../components/ImageUpload'
 import { useTheme } from '../lib/theme'
 
@@ -14,6 +14,7 @@ export default function MyProfile() {
   const [form, setForm] = useState({ phone: '', pronouns: '', bio: '', avatar_url: '' })
   const [hours, setHours] = useState<MemberHours | null>(null)
   const [rsvps, setRsvps] = useState<Post[]>([])
+  const [board, setBoard] = useState<BoardPosition | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -34,9 +35,13 @@ export default function MyProfile() {
         .from('event_signups')
         .select('post:posts!post_id(*)')
         .eq('user_id', profile.id),
-    ]).then(([h, s]) => {
+      supabase.from('board_positions').select('*'),
+    ]).then(([h, s, b]) => {
       if (cancelled) return
       setHours(h.data as MemberHours | null)
+      setBoard(
+        ((b.data as BoardPosition[]) ?? []).find((x) => x.id === profile.board_position) ?? null,
+      )
       setRsvps(
         ((s.data as { post: Post | null }[] | null) ?? [])
           .map((r) => r.post)
@@ -104,6 +109,11 @@ export default function MyProfile() {
               </h2>
               <RoleBadge role={profile.role} />
             </div>
+            {board && (
+              <div className="mt-2 flex justify-center">
+                <BoardBadge label={board.label} />
+              </div>
+            )}
             <p className="mt-1 text-sm muted">{profile.email}</p>
             <p className="mt-1 text-sm muted">
               {[

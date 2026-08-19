@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import type { Member, Role } from '../../lib/types'
+import type { BoardPosition, Member, Role } from '../../lib/types'
 import { formatPhone, gradeLabel } from '../../lib/format'
 import { EmptyState, Notice, Spinner } from '../ui'
 
@@ -12,6 +12,7 @@ const BLANK = {
   graduation_year: '',
   phone: '',
   role: 'member' as Role,
+  board_position: '',
   active: true,
   notes: '',
 }
@@ -26,6 +27,7 @@ function toDraft(m: Member): Draft {
     graduation_year: m.graduation_year != null ? String(m.graduation_year) : '',
     phone: m.phone ?? '',
     role: m.role,
+    board_position: m.board_position ?? '',
     active: m.active,
     notes: m.notes ?? '',
   }
@@ -34,6 +36,7 @@ function toDraft(m: Member): Draft {
 export default function MembersTab() {
   const { profile } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
+  const [positions, setPositions] = useState<BoardPosition[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(BLANK)
@@ -43,9 +46,13 @@ export default function MembersTab() {
   const [msg, setMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from('members').select('*').order('full_name')
-    if (error) setMsg({ tone: 'error', text: error.message })
-    setMembers((data as Member[]) ?? [])
+    const [memberRes, positionRes] = await Promise.all([
+      supabase.from('members').select('*').order('full_name'),
+      supabase.from('board_positions').select('*').order('sort_order'),
+    ])
+    if (memberRes.error) setMsg({ tone: 'error', text: memberRes.error.message })
+    setMembers((memberRes.data as Member[]) ?? [])
+    setPositions((positionRes.data as BoardPosition[]) ?? [])
     setLoading(false)
   }, [])
 
@@ -61,6 +68,7 @@ export default function MembersTab() {
       graduation_year: d.graduation_year ? Number(d.graduation_year) : null,
       phone: d.phone.trim() || null,
       role: d.role,
+      board_position: d.board_position || null,
       active: d.active,
       notes: d.notes.trim() || null,
     }
@@ -187,7 +195,7 @@ export default function MembersTab() {
           />
         </div>
         <div>
-          <label className="label">Rank</label>
+          <label className="label">Rank (site access)</label>
           <select
             className="field"
             value={draft.role}
@@ -197,6 +205,25 @@ export default function MembersTab() {
             <option value="officer">Officer</option>
             <option value="admin">Admin</option>
           </select>
+          <p className="mt-1 text-xs muted">Who can write posts and log hours.</p>
+        </div>
+        <div>
+          <label className="label">Board position</label>
+          <select
+            className="field"
+            value={draft.board_position}
+            onChange={(e) => setDraft({ ...draft, board_position: e.target.value })}
+          >
+            <option value="">No position</option>
+            {positions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs muted">
+            The elected title. Separate from rank — grants no access by itself.
+          </p>
         </div>
       </div>
 
@@ -287,7 +314,7 @@ export default function MembersTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--line)] text-left">
-                {['Name', 'Email', 'Grade', 'Rank', 'Status', ''].map((h) => (
+                {['Name', 'Email', 'Grade', 'Position', 'Rank', 'Status', ''].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-xs font-semibold uppercase tracking-wide muted"
@@ -314,6 +341,11 @@ export default function MembersTab() {
                       {m.grade ?? '—'}
                       {m.graduation_year && (
                         <span className="muted"> · ’{String(m.graduation_year).slice(2)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {positions.find((p) => p.id === m.board_position)?.label ?? (
+                        <span className="muted">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 capitalize">{m.role}</td>

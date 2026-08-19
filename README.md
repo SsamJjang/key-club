@@ -92,13 +92,34 @@ client-side checks would be theatre.
    and members cannot edit their own role (the `profiles_update_own` policy
    pins it).
 
-## Roles
+## Changing the wording
+
+See **[EDITING-TEXT.md](EDITING-TEXT.md)** — which words live in the database
+(editable from the site, no code) and which live in `.tsx` files, with the file
+and line for the ones you're most likely to want.
+
+## Roles vs. positions
+
+Two separate things, on purpose.
+
+**Rank** (`role`) controls site access:
 
 | role | can |
 |---|---|
-| `member` | read posts, RSVP to events, log their own hours, edit their own profile |
-| `officer` | everything above + write/publish posts, approve hours, view the roster |
+| `member` | read posts, RSVP to events, see their own hours, edit their own profile |
+| `officer` | everything above + write/publish posts, log hours, manage the roster |
 | `admin` | same as officer |
+
+**Board position** is the elected office — President, Vice President, Secretary,
+Treasurer — set per member in **Admin → Members**. It grants no permissions at
+all. A Treasurer can be a plain `member`; an adviser can be an `admin` with no
+seat. Positions show on the directory as "This year's board", and as a gold badge
+on member cards and profiles.
+
+Add a seat (Historian, Webmaster, co-anything) with one row in the
+`board_positions` table — `sort_order` controls the display order. Seats are not
+unique by default, so co-presidents work; [`003`](supabase/003_board_positions.sql)
+has the index to uncomment if you want one holder each.
 
 ## Managing the club
 

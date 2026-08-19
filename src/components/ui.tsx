@@ -59,6 +59,20 @@ export function RoleBadge({ role }: { role: Role }) {
   )
 }
 
+/**
+ * An elected seat — President, VP, and so on. Deliberately styled apart from
+ * RoleBadge: that one is about permissions, this one is about the office.
+ */
+export function BoardBadge({ label }: { label?: string | null }) {
+  if (!label) return null
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-gold-300 bg-gold-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gold-600 dark:border-gold-500/40 dark:bg-gold-500/20 dark:text-gold-200">
+      <span aria-hidden>★</span>
+      {label}
+    </span>
+  )
+}
+
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16 muted text-sm">
