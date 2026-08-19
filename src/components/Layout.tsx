@@ -12,27 +12,6 @@ const LINKS = [
   { to: '/hours', label: 'Hours' },
 ]
 
-function ThemeToggle() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('kc-theme', dark ? 'dark' : 'light')
-  }, [dark])
-
-  return (
-    <button
-      type="button"
-      onClick={() => setDark((d) => !d)}
-      className="btn btn-ghost px-2.5"
-      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={dark ? 'Light mode' : 'Dark mode'}
-    >
-      <span aria-hidden>{dark ? '☀️' : '🌙'}</span>
-    </button>
-  )
-}
-
 export default function Layout() {
   const { profile, isAdmin, signOut } = useAuth()
   const [open, setOpen] = useState(false)
@@ -73,7 +52,6 @@ export default function Layout() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2 md:ml-0">
-            <ThemeToggle />
             {profile && (
               <Link
                 to="/me"

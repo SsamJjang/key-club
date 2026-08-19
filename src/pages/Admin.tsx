@@ -99,20 +99,22 @@ function SettingsTab() {
         </h3>
         <p className="mt-1 text-sm muted">
           Sends every Sunday at 9:00 PM (Asia/Seoul) to every active member, with their hours
-          against the goal.
+          against the goal. Delivered by the Key Club Apps Script — if it stops arriving, check
+          its Executions log at script.google.com.
         </p>
 
         <div className="mt-4 space-y-4">
           <div>
-            <label className="label">From address</label>
+            <label className="label">Sender name</label>
             <input
               className="field"
               value={settings.email_from}
               onChange={(e) => setSettings({ ...settings, email_from: e.target.value })}
-              placeholder="Key Club Hour Tracker &lt;keyclub@yourschool.org&gt;"
+              placeholder="Key Club Hour Tracker"
             />
             <p className="mt-1 text-xs muted">
-              The domain must be verified in Resend or delivery will fail.
+              The display name members see. Mail is sent from the Google account that owns the
+              Apps Script, so the address itself is fixed.
             </p>
           </div>
           <div>

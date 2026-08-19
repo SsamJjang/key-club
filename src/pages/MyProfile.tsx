@@ -6,9 +6,11 @@ import type { MemberHours, Post } from '../lib/types'
 import { formatDate, gradeLabel } from '../lib/format'
 import { Avatar, Notice, PageHeader, RoleBadge, Spinner, Stat } from '../components/ui'
 import ImageUpload from '../components/ImageUpload'
+import { useTheme } from '../lib/theme'
 
 export default function MyProfile() {
   const { profile, refreshProfile, signOut } = useAuth()
+  const { dark, setDark } = useTheme()
   const [form, setForm] = useState({ phone: '', pronouns: '', bio: '', avatar_url: '' })
   const [hours, setHours] = useState<MemberHours | null>(null)
   const [rsvps, setRsvps] = useState<Post[]>([])
@@ -117,6 +119,29 @@ export default function MyProfile() {
             <Stat value={Number(hours?.approved_hours ?? 0).toFixed(1)} label="Approved hrs" />
             <Stat value={Number(hours?.pending_hours ?? 0).toFixed(1)} label="Pending hrs" />
           </div>
+
+          <section className="card p-6">
+            <h2 className="label">Appearance</h2>
+            <div className="mt-3 inline-flex rounded-xl border border-[var(--line)] p-1">
+              {[
+                { value: false, label: '☀️ Light' },
+                { value: true, label: '🌙 Dark' },
+              ].map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => setDark(opt.value)}
+                  aria-pressed={dark === opt.value}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                    dark === opt.value ? 'bg-navy-600 text-white' : 'muted'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs muted">Saved on this device only.</p>
+          </section>
 
           <section className="card p-6">
             <h2 className="label">Upcoming RSVPs</h2>

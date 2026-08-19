@@ -32,7 +32,7 @@ export default function Login() {
         />
 
         <div className="relative flex items-center gap-3">
-          <Logo size={44} />
+          <Logo size={44} tone="light" />
           <span className="font-[family-name:var(--font-display)] text-xl font-semibold">
             Key Club
           </span>

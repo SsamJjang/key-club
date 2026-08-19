@@ -63,6 +63,19 @@ html.dark {
 }
 
 @layer components {
+  /* The logo file is a solid black silhouette. invert(1) turns it solid
+     white; the grayscale/contrast pair keeps it fully saturated black or
+     white rather than muddy grey if the artwork ever has soft edges. */
+  .logo-auto,
+  .logo-dark {
+    filter: grayscale(1) contrast(3);
+  }
+
+  html.dark .logo-auto,
+  .logo-light {
+    filter: grayscale(1) contrast(3) invert(1);
+  }
+
   .card {
     background: var(--card);
     border: 1px solid var(--line);
