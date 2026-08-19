@@ -153,44 +153,66 @@ selection, submit, and everyone gets an approved entry at once.
 
 ### Weekly email (Sundays, 9 PM KST)
 
-Replaces the Apps Script. Three pieces: an Edge Function, Resend, and pg_cron.
+Sent by **Google Apps Script**, which now reads the club database instead of a
+spreadsheet. Free, no domain, no DNS, no email service, and it sends from your
+own Google account so it doesn't get filtered as spoofed mail.
 
-**1. Resend.** Make an account, verify your sending domain (Domains → Add), and
-create an API key.
+Script: [`google-apps-script/WeeklyHoursEmail.gs`](google-apps-script/WeeklyHoursEmail.gs)
 
-**2. Deploy the function:**
+**1.** Go to [script.google.com](https://script.google.com) → **New project**.
+Name it `Key Club Hours`. Delete the stub `myFunction` and paste in the whole
+`.gs` file.
 
-```bash
-supabase functions deploy weekly-hours-email
-```
+**2. Project Settings → Script properties → Add script property**, twice:
 
-```bash
-supabase secrets set RESEND_API_KEY=re_your_key_here
-```
+| Property | Value |
+|---|---|
+| `SUPABASE_URL` | `https://YOUR_REF.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | your `service_role` key (Supabase → Settings → API) |
 
-**3. Configure it** in **Admin → Settings**: hours goal, from address, site URL,
-and the on/off switch. `email_from` must use the domain you verified in Resend.
+The service key belongs *only* here — never in the website code, never in git.
+Script properties are readable only by you.
 
-**4. Test before scheduling** — from the Supabase dashboard, invoke the function
-with:
+**3. Project Settings → Time zone → `(GMT+09:00) Seoul`.** The trigger uses this,
+so there's no UTC math to get wrong.
 
-```json
-{ "dryRun": true }
-```
+**4.** Fill in **Admin → Settings** on the site: club name, school year, hours
+goal, site URL. Leave the on/off switch **off** for now. (`From address` only
+supplies the display name here — Gmail sends from your own account regardless.)
 
-That returns the recipient list and sends nothing. Then `{"testTo":"you@school.org"}`
-sends one real email to just you. Both ignore the on/off switch.
+**5. Test.** In the Apps Script editor, pick `previewRecipients` from the
+function dropdown and **Run**. Approve the permission prompt the first time —
+it will warn the app isn't verified, which is expected for your own script
+(Advanced → Go to project). Open **Executions** to see who *would* be mailed.
+Nothing is sent.
 
-**5. Schedule it.** The `cron.schedule` call is at the bottom of the 002 SQL,
-commented out with placeholders for your project ref and service role key.
-Uncomment, fill in, run. It fires `0 12 * * 0` — Sunday 12:00 UTC = Sunday
-21:00 KST.
+Then run `sendTestToMe` — one real email, to you only.
 
-> Sunday 9 PM KST is fixed year-round since Korea has no daylight saving. If the
-> club ever moves timezones, the UTC hour needs recalculating.
+**6. Schedule it.** Run `createWeeklyTrigger` once. That's it: Sundays at 9 PM
+Seoul time, forever. Then flip the switch on in **Admin → Settings**.
+
+To stop it, run `deleteWeeklyTrigger`, or turn off the switch in Settings.
+
+**Quota:** Gmail allows 100 recipients/day on a consumer account, 1,500/day on
+Workspace. The script checks the remaining quota first and refuses to send
+rather than emailing half the club.
 
 Every run writes to `email_log` (recipients, failures, first errors), so a
-double-fire or a delivery problem is visible in the table editor.
+delivery problem is visible in the Supabase table editor.
+
+<details>
+<summary>Alternative: Supabase Edge Function + Resend</summary>
+
+[`supabase/functions/weekly-hours-email/`](supabase/functions/weekly-hours-email/)
+does the same job entirely inside Supabase, scheduled with `pg_cron` (the
+commented block at the bottom of the 002 SQL, `0 12 * * 0` = Sunday 21:00 KST).
+
+It needs a **domain you control DNS for**, because Resend requires SPF/DKIM
+records to verify a sender. If the club ever gets its own domain, this is the
+tidier option — everything lives in one place and there's no Google dependency.
+Until then, use the Apps Script above.
+
+</details>
 
 ---
 
