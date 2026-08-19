@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -6,14 +6,12 @@ import type { Post } from '../lib/types'
 import { formatDate, formatTime, hasEnded } from '../lib/format'
 import { EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
 import EventCalendar from '../components/EventCalendar'
+import type { CalendarEvent } from '../components/EventCalendar'
 
-interface EventRow extends Post {
-  going: number
-  mine: boolean
-}
+type EventRow = CalendarEvent
 
 export default function Events() {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const [rows, setRows] = useState<EventRow[]>([])
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
   const [view, setView] = useState<'list' | 'calendar'>(
@@ -21,42 +19,61 @@ export default function Events() {
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const [eventsRes, signupsRes] = await Promise.all([
+      supabase
+        .from('posts')
+        .select('*')
+        .eq('published', true)
+        .eq('category', 'event')
+        .order('starts_at', { ascending: true }),
+      supabase.from('event_signups').select('post_id, user_id'),
+    ])
+
+    if (eventsRes.error) setError(eventsRes.error.message)
+
+    const signups = (signupsRes.data as { post_id: string; user_id: string }[]) ?? []
+    const events = (eventsRes.data as Post[]) ?? []
+
+    setRows(
+      events.map((e) => ({
+        ...e,
+        going: signups.filter((s) => s.post_id === e.id).length,
+        mine: signups.some((s) => s.post_id === e.id && s.user_id === profile?.id),
+      })),
+    )
+    setLoading(false)
+  }, [profile?.id])
 
   useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      const [eventsRes, signupsRes] = await Promise.all([
-        supabase
-          .from('posts')
-          .select('*')
-          .eq('published', true)
-          .eq('category', 'event')
-          .order('starts_at', { ascending: true }),
-        supabase.from('event_signups').select('post_id, user_id'),
-      ])
-
-      if (cancelled) return
-      if (eventsRes.error) setError(eventsRes.error.message)
-
-      const signups = (signupsRes.data as { post_id: string; user_id: string }[]) ?? []
-      const events = (eventsRes.data as Post[]) ?? []
-
-      setRows(
-        events.map((e) => ({
-          ...e,
-          going: signups.filter((s) => s.post_id === e.id).length,
-          mine: signups.some((s) => s.post_id === e.id && s.user_id === profile?.id),
-        })),
-      )
-      setLoading(false)
-    }
-
     void load()
-    return () => {
-      cancelled = true
-    }
-  }, [profile?.id])
+  }, [load])
+
+  // RSVP straight from the calendar, so signing up never costs a page load.
+  const toggleRsvp = useCallback(
+    async (event: EventRow) => {
+      if (!profile) return
+      setBusyId(event.id)
+      setError(null)
+
+      const { error } = event.mine
+        ? await supabase
+            .from('event_signups')
+            .delete()
+            .eq('post_id', event.id)
+            .eq('user_id', profile.id)
+        : await supabase
+            .from('event_signups')
+            .insert({ post_id: event.id, user_id: profile.id })
+
+      if (error) setError(error.message)
+      await load()
+      setBusyId(null)
+    },
+    [profile, load],
+  )
 
   const { upcoming, past } = useMemo(
     () => ({
@@ -128,7 +145,12 @@ export default function Events() {
       {loading ? (
         <Spinner />
       ) : view === 'calendar' ? (
-        <EventCalendar events={rows} />
+        <EventCalendar
+          events={rows}
+          onRsvp={toggleRsvp}
+          busyId={busyId}
+          isAdmin={isAdmin}
+        />
       ) : list.length === 0 ? (
         <EmptyState icon="🗓️" title={`No ${tab} events`}>
           {tab === 'upcoming'
