@@ -123,12 +123,12 @@ has the index to uncomment if you want one holder each.
 
 ## Managing the club
 
-Roster changes happen in Supabase Studio (`members` table). Everything else
-happens in the app at `/#/admin`:
+All of it happens in the app at `/#/admin`:
 
-- **Posts** — write news, notices, and events in Markdown, pin to the home page, publish or unpublish.
-- **Hours queue** — approve or reject submitted service hours.
-- **Roster** — read-only view of the allowlist.
+- **Posts** — write news, notices, and events in Markdown, upload images, pin to the home page, publish or unpublish.
+- **Hours** — log service hours for members; pick an event to pre-select everyone who signed up.
+- **Members** — add, edit, deactivate, or remove people, and assign board positions.
+- **Settings** — club name, hours goal, site URL, and the weekly email switch.
 
 ---
 
