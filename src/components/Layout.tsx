@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Avatar } from './ui'
+import { LogoWordmark } from './Logo'
 
 const LINKS = [
   { to: '/', label: 'Home', end: true },
@@ -49,12 +50,7 @@ export default function Layout() {
       <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--card)]/85 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
           <Link to="/" className="flex items-center gap-2.5 shrink-0">
-            <span className="grid size-9 place-items-center rounded-xl bg-navy-600 text-base text-white" aria-hidden>
-              🗝️
-            </span>
-            <span className="font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight">
-              Key Club
-            </span>
+            <LogoWordmark size={36} />
           </Link>
 
           <nav className="ml-auto hidden items-center gap-1 md:flex">

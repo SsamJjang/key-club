@@ -111,6 +111,89 @@ happens in the app at `/#/admin`:
 
 ---
 
+## Update 002 — logo, uploads, roster editing, weekly email
+
+Run [`supabase/002_admin_storage_email.sql`](supabase/002_admin_storage_email.sql)
+in the SQL Editor after `schema.sql`.
+
+### The logo
+
+Replace `public/logo.svg` with the real Key Club logo, keeping the filename.
+The header, login page, and favicon all read from it. Using a PNG instead?
+Drop in `public/logo.png` and change `LOGO_SRC` in
+[`src/components/Logo.tsx`](src/components/Logo.tsx).
+
+### Image uploads
+
+Two public Storage buckets are created: `post-images` (officers only) and
+`avatars` (members write only into their own folder). In the post editor, the
+cover image has an upload button, and **+ Insert image** above the body uploads
+and drops the Markdown in at the end. 5 MB cap per image.
+
+### Managing the roster in-app
+
+**Admin → Members** now does add / edit / deactivate / delete. Two guard rails
+enforced in RLS, not just the UI: you cannot deactivate yourself, and you cannot
+strip your own admin role — so a chapter can't lock itself out.
+
+*Deactivate* revokes access on the next request and keeps their history.
+*Delete* removes the roster row entirely; their profile and logged hours stay in
+the database but are orphaned, and their Google account still exists in
+`auth.users` (removing that needs the service role key).
+
+### Hours are officer-entered
+
+Members can no longer submit hours — the RLS insert policy is gone, so it's
+enforced server-side, not just hidden in the UI. `/hours` is now a read-only
+record with a progress bar.
+
+Officers use **Admin → Hours**: pick an event and it pre-fills the hours,
+date, and description *and* pre-selects everyone who signed up. Adjust the
+selection, submit, and everyone gets an approved entry at once.
+
+### Weekly email (Sundays, 9 PM KST)
+
+Replaces the Apps Script. Three pieces: an Edge Function, Resend, and pg_cron.
+
+**1. Resend.** Make an account, verify your sending domain (Domains → Add), and
+create an API key.
+
+**2. Deploy the function:**
+
+```bash
+supabase functions deploy weekly-hours-email
+```
+
+```bash
+supabase secrets set RESEND_API_KEY=re_your_key_here
+```
+
+**3. Configure it** in **Admin → Settings**: hours goal, from address, site URL,
+and the on/off switch. `email_from` must use the domain you verified in Resend.
+
+**4. Test before scheduling** — from the Supabase dashboard, invoke the function
+with:
+
+```json
+{ "dryRun": true }
+```
+
+That returns the recipient list and sends nothing. Then `{"testTo":"you@school.org"}`
+sends one real email to just you. Both ignore the on/off switch.
+
+**5. Schedule it.** The `cron.schedule` call is at the bottom of the 002 SQL,
+commented out with placeholders for your project ref and service role key.
+Uncomment, fill in, run. It fires `0 12 * * 0` — Sunday 12:00 UTC = Sunday
+21:00 KST.
+
+> Sunday 9 PM KST is fixed year-round since Korea has no daylight saving. If the
+> club ever moves timezones, the UTC hour needs recalculating.
+
+Every run writes to `email_log` (recipients, failures, first errors), so a
+double-fire or a delivery problem is visible in the table editor.
+
+---
+
 ## Deploying
 
 The build is static files in `dist/`. Routing is hash-based, so deep links work

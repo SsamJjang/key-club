@@ -71,6 +71,7 @@ export interface HoursEntry {
   status: HoursStatus
   review_note: string | null
   reviewed_by: string | null
+  created_by: string | null
   reviewed_at: string | null
   created_at: string
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
@@ -97,4 +98,15 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 
 export function canPublish(role: Role | undefined) {
   return role === 'admin' || role === 'officer'
+}
+
+export interface ClubSettings {
+  id: boolean
+  club_name: string
+  school_year: string
+  hours_goal: number
+  email_from: string
+  email_reply_to: string | null
+  weekly_email_enabled: boolean
+  site_url: string | null
 }

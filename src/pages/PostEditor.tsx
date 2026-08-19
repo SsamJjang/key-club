@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import ImageUpload from '../components/ImageUpload'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Category, Post } from '../lib/types'
@@ -44,6 +45,8 @@ export default function PostEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [inserting, setInserting] = useState(false)
+  const bodyImageRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isNew) return
@@ -87,6 +90,32 @@ export default function PostEditor() {
 
   const preview = useMemo(() => renderMarkdown(form.body), [form.body])
   const isEvent = form.category === 'event'
+
+  // Uploads an image and appends the Markdown for it to the body.
+  async function insertBodyImage(file: File) {
+    setInserting(true)
+    setError(null)
+
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    const path = `body/${crypto.randomUUID()}.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('post-images')
+      .upload(path, file, { cacheControl: '31536000' })
+
+    if (uploadError) {
+      setError(uploadError.message)
+      setInserting(false)
+      return
+    }
+
+    const { data } = supabase.storage.from('post-images').getPublicUrl(path)
+    const alt = file.name.replace(/\.[^.]+$/, '')
+    setForm((f) => ({
+      ...f,
+      body: `${f.body}${f.body.endsWith('\n') || !f.body ? '' : '\n\n'}![${alt}](${data.publicUrl})\n`,
+    }))
+    setInserting(false)
+  }
 
   function setTitle(title: string) {
     setForm((f) => ({ ...f, title, slug: slugTouched ? f.slug : slugify(title) }))
@@ -216,14 +245,36 @@ export default function PostEditor() {
             <div>
               <div className="flex items-center justify-between">
                 <label className="label" htmlFor="body">Body (Markdown)</label>
-                <button
-                  type="button"
-                  onClick={() => setShowPreview((p) => !p)}
-                  className="text-xs font-semibold text-navy-600 hover:underline dark:text-navy-200"
-                >
-                  {showPreview ? 'Edit' : 'Preview'}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => bodyImageRef.current?.click()}
+                    disabled={inserting}
+                    className="text-xs font-semibold text-navy-600 hover:underline disabled:opacity-50 dark:text-navy-200"
+                  >
+                    {inserting ? 'Uploading…' : '+ Insert image'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPreview((p) => !p)}
+                    className="text-xs font-semibold text-navy-600 hover:underline dark:text-navy-200"
+                  >
+                    {showPreview ? 'Edit' : 'Preview'}
+                  </button>
+                </div>
               </div>
+
+              <input
+                ref={bodyImageRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void insertBodyImage(file)
+                  e.target.value = ''
+                }}
+              />
               {showPreview ? (
                 <div
                   className="prose-club min-h-64 rounded-xl border border-[var(--line)] p-4"
@@ -264,16 +315,14 @@ export default function PostEditor() {
               />
               Pin to the top of the home page
             </label>
-            <div>
-              <label className="label" htmlFor="cover">Cover image URL</label>
-              <input
-                id="cover"
-                className="field"
-                value={form.cover_url}
-                onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
-                placeholder="https://…"
-              />
-            </div>
+            <ImageUpload
+              bucket="post-images"
+              folder="covers"
+              label="Cover image"
+              value={form.cover_url}
+              onChange={(url) => setForm({ ...form, cover_url: url })}
+              hint="Shown on cards and at the top of the article."
+            />
           </div>
 
           {isEvent && (

@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { isConfigured } from '../lib/supabase'
 import { Notice, Spinner } from '../components/ui'
+import Logo, { LogoWordmark } from '../components/Logo'
 
 export default function Login() {
   const { session, loading, authError, signIn } = useAuth()
@@ -31,9 +32,7 @@ export default function Login() {
         />
 
         <div className="relative flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-xl bg-white/10 text-xl" aria-hidden>
-            🗝️
-          </span>
+          <Logo size={44} />
           <span className="font-[family-name:var(--font-display)] text-xl font-semibold">
             Key Club
           </span>
@@ -66,13 +65,8 @@ export default function Login() {
       {/* Right: the door */}
       <div className="flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm rise">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="grid size-9 place-items-center rounded-xl bg-navy-600 text-base text-white" aria-hidden>
-              🗝️
-            </span>
-            <span className="font-[family-name:var(--font-display)] text-lg font-semibold">
-              Key Club
-            </span>
+          <div className="mb-8 lg:hidden">
+            <LogoWordmark size={36} />
           </div>
 
           <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import type { MemberHours, Post } from '../lib/types'
 import { formatDate, gradeLabel } from '../lib/format'
 import { Avatar, Notice, PageHeader, RoleBadge, Spinner, Stat } from '../components/ui'
+import ImageUpload from '../components/ImageUpload'
 
 export default function MyProfile() {
   const { profile, refreshProfile, signOut } = useAuth()
@@ -170,16 +171,14 @@ export default function MyProfile() {
             </div>
           </div>
 
-          <div>
-            <label className="label" htmlFor="avatar">Photo URL</label>
-            <input
-              id="avatar"
-              className="field"
-              value={form.avatar_url}
-              onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
-              placeholder="https://…"
-            />
-          </div>
+          <ImageUpload
+            bucket="avatars"
+            folder={profile.id}
+            label="Profile photo"
+            value={form.avatar_url}
+            onChange={(url) => setForm({ ...form, avatar_url: url })}
+            hint="Square images look best. Save to apply."
+          />
 
           <div>
             <label className="label" htmlFor="bio">About you</label>
