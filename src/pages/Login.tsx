@@ -72,7 +72,7 @@ export default function Login() {
             Welcome back
           </h2>
           <p className="mt-2 text-sm muted">
-            Members only. Your email has to be on the club roster — there is no sign-up form.
+            Key Club member exclusive. Sign-in with your respective school email.
           </p>
 
           {!isConfigured && (
