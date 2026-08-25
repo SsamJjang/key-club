@@ -4,14 +4,24 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { EventSignup, Post } from '../lib/types'
 import {
+  dayKey,
   formatDate,
   formatOccurrence,
   formatServiceHours,
   formatTime,
   hasEnded,
+  isRecurring,
   nextOccurrence,
   occurrences,
 } from '../lib/format'
+import {
+  addRemainingDates,
+  addSignup,
+  datesFor,
+  distinctMembers,
+  removeAllSignups,
+  removeSignup,
+} from '../lib/rsvp'
 import { renderBody } from '../lib/markdown'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
 
@@ -60,27 +70,45 @@ export default function PostDetail() {
 
   const html = useMemo(() => (post ? renderBody(post.body) : ''), [post])
   const mine = signups.some((s) => s.user_id === profile?.id)
-  const full = Boolean(post?.capacity && signups.length >= post.capacity)
+  // Capacity counts people, not seats-per-date: a series with room for 20 means
+  // 20 members on the project, however many sessions each of them makes.
+  const full = Boolean(post?.capacity && distinctMembers(signups) >= post.capacity)
 
-  async function toggleRsvp() {
+  /**
+   * Toggle one date of a series, or the whole event when it only has one date
+   * (`key` null). Everything the member clicks routes through here.
+   */
+  async function toggleRsvp(key: string | null) {
     if (!post || !profile) return
     setBusy(true)
     setError(null)
 
-    if (mine) {
-      const { error } = await supabase
-        .from('event_signups')
-        .delete()
-        .eq('post_id', post.id)
-        .eq('user_id', profile.id)
-      if (error) setError(error.message)
-    } else {
-      const { error } = await supabase
-        .from('event_signups')
-        .insert({ post_id: post.id, user_id: profile.id })
-      if (error) setError(error.message)
-    }
+    const has = signups.some((s) => s.user_id === profile.id && s.occurs_on === key)
+    const { error } = has
+      ? await removeSignup(post.id, profile.id, key)
+      : await addSignup(post.id, profile.id, key)
 
+    if (error) setError(error.message)
+    await loadSignups(post.id)
+    setBusy(false)
+  }
+
+  async function selectAllDates() {
+    if (!post || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error } = await addRemainingDates(post, profile.id, signups)
+    if (error) setError(error.message)
+    await loadSignups(post.id)
+    setBusy(false)
+  }
+
+  async function clearMyDates() {
+    if (!post || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error } = await removeAllSignups(post.id, profile.id)
+    if (error) setError(error.message)
     await loadSignups(post.id)
     setBusy(false)
   }
@@ -96,9 +124,17 @@ export default function PostDetail() {
 
   const isEvent = post.category === 'event'
   const dates = occurrences(post)
+  const series = isRecurring(post)
   // For a series, the next date still to come; once it's over, the last one.
   const when = nextOccurrence(post) ?? dates[dates.length - 1] ?? null
   const hours = formatServiceHours(post)
+  const myDates = profile ? datesFor(signups, profile.id) : 0
+
+  // One entry per member for the "who's going" list — a member with five
+  // dates in a series is still one person on the roster.
+  const roster = signups.filter(
+    (s, i) => signups.findIndex((o) => o.user_id === s.user_id) === i,
+  )
 
   // Three independent reasons a member can't join, each with its own message —
   // "closed" for all of them is what made this confusing to debug.
@@ -211,41 +247,87 @@ export default function PostDetail() {
             <div>
               <dt className="label">Signed up</dt>
               <dd className="font-medium">
-                {signups.length}
+                {distinctMembers(signups)}
                 {post.capacity ? ` of ${post.capacity} spots` : ' members'}
               </dd>
             </div>
           </dl>
 
-          {/* Every date, spelled out. One sign-up covers the whole series, so
-              members need to see exactly what they are committing to. */}
-          {dates.length > 1 && (
+          {/* A series is picked date by date. Nobody can make every Wednesday
+              of a term, and asking them to commit to all or nothing is how you
+              end up with an empty sign-up list. */}
+          {series && (
             <div className="mt-5 border-t border-[var(--line)] pt-5">
-              <p className="label">All {dates.length} dates</p>
-              <ul className="mt-2 flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="label mb-0">Which dates can you make?</p>
+                <p className="text-xs muted">
+                  {myDates > 0
+                    ? `You’re down for ${myDates} of ${dates.length}`
+                    : `${dates.length} dates — pick any`}
+                </p>
+              </div>
+
+              <ul className="mt-3 flex flex-wrap gap-1.5">
                 {dates.map((d) => {
+                  const key = dayKey(d)
                   const done = d.getTime() < Date.now()
+                  const going = signups.filter((s) => s.occurs_on === key)
+                  const isMine = going.some((s) => s.user_id === profile?.id)
+                  const locked = busy || done || closed || (!isMine && full)
+
                   return (
-                    <li
-                      key={d.toISOString()}
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                        done
-                          ? 'border-[var(--line)] muted line-through'
-                          : 'border-navy-200 text-navy-700 dark:border-navy-600 dark:text-navy-200'
-                      }`}
-                    >
-                      {d.toLocaleDateString(undefined, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                    <li key={key}>
+                      <button
+                        type="button"
+                        onClick={() => void toggleRsvp(key)}
+                        disabled={locked}
+                        aria-pressed={isMine}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                          done
+                            ? 'cursor-not-allowed border-[var(--line)] muted line-through'
+                            : isMine
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                              : 'border-[var(--line)] hover:border-navy-400 disabled:cursor-not-allowed disabled:opacity-50'
+                        }`}
+                      >
+                        {isMine && <span aria-hidden>✓</span>}
+                        {d.toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                        {going.length > 0 && (
+                          <span className={isMine ? 'opacity-70' : 'muted'}>· {going.length}</span>
+                        )}
+                      </button>
                     </li>
                   )
                 })}
               </ul>
-              <p className="mt-2 text-xs muted">
-                Signing up once covers every date in this series.
-              </p>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost py-1.5 text-xs"
+                  onClick={() => void selectAllDates()}
+                  disabled={busy || !canJoin}
+                >
+                  Select every remaining date
+                </button>
+                {myDates > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost py-1.5 text-xs"
+                    onClick={() => void clearMyDates()}
+                    disabled={busy}
+                  >
+                    Clear mine
+                  </button>
+                )}
+                <span className="text-xs muted">
+                  The number on a date is how many members are coming that day.
+                </span>
+              </div>
             </div>
           )}
 
@@ -255,51 +337,73 @@ export default function PostDetail() {
             </div>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void toggleRsvp()}
-              disabled={busy || (!canJoin && !mine)}
-              className={`btn ${mine ? 'btn-ghost' : 'btn-primary'}`}
-            >
-              {rsvpLabel}
-            </button>
-            {mine ? (
-              <span className="text-sm text-emerald-700 dark:text-emerald-300">
-                You’re signed up. See you there.
-              </span>
-            ) : (
-              !canJoin && (
-                <span className="text-sm muted">
-                  {ended
-                    ? 'Sign-ups end once the event is over.'
-                    : closed
-                      ? 'An officer has closed sign-ups for this event.'
-                      : 'Every spot has been taken.'}
+          {/* A series has no single yes/no — its answer is the date chips
+              above. Only a one-date event gets the plain button. */}
+          {!series && (
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void toggleRsvp(null)}
+                disabled={busy || (!canJoin && !mine)}
+                className={`btn ${mine ? 'btn-ghost' : 'btn-primary'}`}
+              >
+                {rsvpLabel}
+              </button>
+              {mine ? (
+                <span className="text-sm text-emerald-700 dark:text-emerald-300">
+                  You’re signed up. See you there.
                 </span>
-              )
-            )}
-          </div>
+              ) : (
+                !canJoin && (
+                  <span className="text-sm muted">
+                    {ended
+                      ? 'Sign-ups end once the event is over.'
+                      : closed
+                        ? 'An officer has closed sign-ups for this event.'
+                        : 'Every spot has been taken.'}
+                  </span>
+                )
+              )}
+            </div>
+          )}
 
-          {signups.length > 0 && (
+          {series && !canJoin && (
+            <p className="mt-4 text-sm muted">
+              {ended
+                ? 'This series has finished — its dates are locked.'
+                : closed
+                  ? 'An officer has closed sign-ups for this event.'
+                  : 'Every spot has been taken.'}
+            </p>
+          )}
+
+          {roster.length > 0 && (
             <div className="mt-6 border-t border-[var(--line)] pt-5">
               <p className="label">Who’s going</p>
               <ul className="mt-3 flex flex-wrap gap-2">
-                {signups.map((s) => (
-                  <li key={s.user_id}>
-                    <Link
-                      to={`/members/${s.user_id}`}
-                      className="flex items-center gap-2 rounded-full border border-[var(--line)] py-1 pl-1 pr-3 text-sm transition hover:border-navy-300"
-                    >
-                      <Avatar
-                        name={s.profile?.full_name ?? '?'}
-                        url={s.profile?.avatar_url}
-                        size={24}
-                      />
-                      {s.profile?.full_name ?? 'Member'}
-                    </Link>
-                  </li>
-                ))}
+                {roster.map((s) => {
+                  const count = datesFor(signups, s.user_id)
+                  return (
+                    <li key={s.user_id}>
+                      <Link
+                        to={`/members/${s.user_id}`}
+                        className="flex items-center gap-2 rounded-full border border-[var(--line)] py-1 pl-1 pr-3 text-sm transition hover:border-navy-300"
+                      >
+                        <Avatar
+                          name={s.profile?.full_name ?? '?'}
+                          url={s.profile?.avatar_url}
+                          size={24}
+                        />
+                        {s.profile?.full_name ?? 'Member'}
+                        {series && (
+                          <span className="text-xs muted">
+                            {count} date{count === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

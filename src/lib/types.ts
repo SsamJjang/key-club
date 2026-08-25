@@ -70,8 +70,14 @@ export interface Post {
 }
 
 export interface EventSignup {
+  id: string
   post_id: string
   user_id: string
+  /**
+   * Which date of a series this is for. Null means "the event" — the shape
+   * for a single-date event, and for one with no date set yet.
+   */
+  occurs_on: string | null
   status: 'going' | 'waitlist'
   attended: boolean
   created_at: string

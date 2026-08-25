@@ -7,13 +7,20 @@ import {
   formatTime,
   fromDayKey as fromKey,
   hasEnded,
+  isRecurring,
   nextOccurrence,
+  occurrenceEnded,
   occurrences,
 } from '../lib/format'
+import type { SignupRow } from '../lib/rsvp'
 
 export interface CalendarEvent extends Post {
+  /** Distinct members attending at least one date. */
   going: number
+  /** Signed up for at least one date. */
   mine: boolean
+  /** Raw rows, so a day cell can count just its own date. */
+  signups: SignupRow[]
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -24,10 +31,21 @@ function startOfMonth(date: Date) {
 
 type Status = 'past' | 'going' | 'full' | 'closed' | 'open'
 
-function statusOf(event: CalendarEvent): Status {
-  if (hasEnded(event)) return 'past'
-  if (event.mine) return 'going'
-  if (event.capacity && event.going >= event.capacity) return 'full'
+/**
+ * Status is per-date for a series: a member can be down for the 9th and not
+ * the 16th, and last week's session is grey while the rest of the term is
+ * still open. `day` null means "the event as a whole".
+ */
+function statusFor(event: CalendarEvent, day: Date | null, userId: string | null): Status {
+  const series = isRecurring(event)
+  const key = series && day ? dayKey(day) : null
+  const rows = key ? event.signups.filter((s) => s.occurs_on === key) : event.signups
+  const mine = userId ? rows.some((s) => s.user_id === userId) : event.mine
+
+  const past = series && day ? occurrenceEnded(event, day) : hasEnded(event)
+  if (past) return 'past'
+  if (mine) return 'going'
+  if (event.capacity && event.going >= event.capacity && !mine) return 'full'
   if (!event.signup_open) return 'closed'
   return 'open'
 }
@@ -92,18 +110,29 @@ function EventDetail({
   onRsvp,
   busy,
   on = null,
+  userId = null,
 }: {
   event: CalendarEvent
-  onRsvp: (event: CalendarEvent) => void
+  onRsvp: (event: CalendarEvent, day: Date | null) => void
   busy: boolean
-  /** Which occurrence this card is being shown under, for the calendar link. */
+  /** Which occurrence this card is shown under — the date being RSVP'd to. */
   on?: Date | null
+  userId?: string | null
 }) {
-  const status = statusOf(event)
+  const series = isRecurring(event)
+  const status = statusFor(event, on, userId)
   const spotsLeft = event.capacity ? Math.max(0, event.capacity - event.going) : null
   const pct = event.capacity ? Math.min(100, (event.going / event.capacity) * 100) : 0
   const gcal = googleCalendarUrl(event, on)
   const hours = formatServiceHours(event)
+
+  // For a series the card is about one date, so the counts are that date's.
+  const dayKeyFor = series && on ? dayKey(on) : null
+  const dayRows = dayKeyFor
+    ? event.signups.filter((s) => s.occurs_on === dayKeyFor)
+    : event.signups
+  const dayGoing = dayKeyFor ? dayRows.length : event.going
+  const dayMine = userId ? dayRows.some((s) => s.user_id === userId) : event.mine
 
   return (
     <article className="card p-5">
@@ -138,7 +167,8 @@ function EventDetail({
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-medium">
-                {event.going} {event.going === 1 ? 'member' : 'members'} going
+                {dayGoing} {dayGoing === 1 ? 'member' : 'members'} going
+                {series && <span className="muted"> this date</span>}
               </span>
               {spotsLeft !== null && (
                 <span className={spotsLeft === 0 ? 'muted' : 'font-semibold text-gold-600 dark:text-gold-300'}>
@@ -159,21 +189,25 @@ function EventDetail({
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => onRsvp(event)}
+              onClick={() => onRsvp(event, on)}
               disabled={busy || (status !== 'open' && status !== 'going')}
-              className={`btn py-1.5 text-sm ${event.mine ? 'btn-ghost' : 'btn-primary'}`}
+              className={`btn py-1.5 text-sm ${dayMine ? 'btn-ghost' : 'btn-primary'}`}
             >
               {busy
                 ? 'Saving…'
-                : event.mine
-                  ? '✓ You’re going — cancel'
+                : dayMine
+                  ? series
+                    ? '✓ In for this date — cancel'
+                    : '✓ You’re going — cancel'
                   : status === 'past'
                     ? 'Already happened'
                     : status === 'full'
                       ? 'Full'
                       : status === 'closed'
                         ? 'Sign-ups closed'
-                        : 'Count me in'}
+                        : series
+                          ? 'Count me in for this date'
+                          : 'Count me in'}
             </button>
 
             {gcal && status !== 'past' && (
@@ -188,9 +222,19 @@ function EventDetail({
             )}
 
             <Link to={`/post/${event.slug}`} className="btn btn-ghost py-1.5 text-sm">
-              Details
+              {series ? 'All dates' : 'Details'}
             </Link>
           </div>
+
+          {series && (
+            <p className="mt-2 text-xs muted">
+              Repeats — {event.recurrence_note}. The button above covers only{' '}
+              {on
+                ? on.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+                : 'this date'}
+              ; open <span className="font-medium">All dates</span> to pick several at once.
+            </p>
+          )}
         </div>
       </div>
     </article>
@@ -202,11 +246,14 @@ export default function EventCalendar({
   onRsvp,
   busyId,
   isAdmin = false,
+  userId = null,
 }: {
   events: CalendarEvent[]
-  onRsvp: (event: CalendarEvent) => void
+  onRsvp: (event: CalendarEvent, day: Date | null) => void
   busyId: string | null
   isAdmin?: boolean
+  /** Who is looking — decides which dates read as "you're in". */
+  userId?: string | null
 }) {
   const today = new Date()
   const [cursor, setCursor] = useState(() => startOfMonth(today))
@@ -268,7 +315,7 @@ export default function EventCalendar({
   )
 
   const monthGoing = monthEvents.filter((e) => e.mine).length
-  const monthOpen = monthEvents.filter((e) => statusOf(e) === 'open').length
+  const monthOpen = monthEvents.filter((e) => statusFor(e, null, userId) === 'open').length
 
   const nextUp = useMemo(() => {
     const dated = events
@@ -441,7 +488,7 @@ export default function EventCalendar({
 
                 <div className="mt-1 hidden space-y-0.5 sm:block">
                   {dayEvents.slice(0, 3).map((event) => {
-                    const status = statusOf(event)
+                    const status = statusFor(event, date, userId)
                     return (
                       <div
                         key={event.id}
@@ -464,7 +511,7 @@ export default function EventCalendar({
                     {dayEvents.slice(0, 4).map((event) => (
                       <span
                         key={event.id}
-                        className={`size-1.5 rounded-full ${DOT[statusOf(event)]}`}
+                        className={`size-1.5 rounded-full ${DOT[statusFor(event, date, userId)]}`}
                         aria-hidden
                       />
                     ))}
@@ -524,6 +571,7 @@ export default function EventCalendar({
                 onRsvp={onRsvp}
                 busy={busyId === event.id}
                 on={fromKey(selected)}
+                userId={userId}
               />
             ))}
           </div>
@@ -542,6 +590,7 @@ export default function EventCalendar({
                 event={event}
                 onRsvp={onRsvp}
                 busy={busyId === event.id}
+                userId={userId}
               />
             ))}
           </div>

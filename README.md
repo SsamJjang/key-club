@@ -318,9 +318,8 @@ list is something an officer can read back, delete one date out of for a
 holiday, and trust. The editor shows the generated dates before you save, and
 caps a series at 200 dates so a mistyped end year can't fill the table.
 
-One sign-up covers the whole series — the event page lists every date and says
-so. The calendar draws the event on each of its dates, and an event is only
-"past" once its **last** date has gone by.
+The calendar draws the event on each of its dates, and an event is only "past"
+once its **last** date has gone by. Sign-ups are per date — see update 005.
 
 `recurrence_note` holds a display sentence like `Every Wed until Dec 17`. It's
 derived from the dates themselves, so an event edited later still describes
@@ -336,6 +335,40 @@ Headings inside post bodies (`prose-club h1/h2/h3`) are sans now, matching the
 body text. The display serif is still used for page furniture — page titles,
 card titles, the calendar's month — but in a written post it read as though the
 paragraph and its own heading came from different sites.
+
+---
+
+## Update 005 — sign up for specific dates
+
+Run [`supabase/005_per_date_signups.sql`](supabase/005_per_date_signups.sql).
+Existing sign-ups keep meaning exactly what they did.
+
+Nobody can make every Wednesday of a term, and asking for all-or-nothing is how
+you get an empty sign-up list. A member now picks the dates they can make:
+
+- **On the event page**, a series shows every date as a toggle chip, each with
+  a count of who's coming that day. Tap any number of them. **Select every
+  remaining date** takes the lot; **Clear mine** drops them all.
+- **On the calendar**, the button under a day cell signs you up for *that*
+  date only, and says so.
+- A single-date event is unchanged — one button, no dates to choose.
+
+`event_signups.occurs_on` holds the date. It's `NULL` for a one-date event and
+for an event with no date yet, because "I'm coming to this" needs no date to
+disambiguate — so every row written before this migration still reads
+correctly. The primary key moved from `(post_id, user_id)` to a surrogate `id`,
+with a unique index on `(post_id, user_id, coalesce(occurs_on, '0001-01-01'))`
+enforcing one row per member per date.
+
+**Counting.** "3 members going" means three *people*, not three rows — a member
+down for five dates is one member. Capacity works the same way: it caps people
+on the project, not seats per session. The per-date number lives on each date
+chip instead.
+
+**Awarding hours.** Admin → Hours pre-selects the members who signed up **for
+the date served**, not everyone who ever signed up for the series. Change the
+date by hand and a button offers to re-select for that date — it won't silently
+overwrite a list you've already adjusted.
 
 ---
 

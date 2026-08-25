@@ -123,6 +123,18 @@ export function isUpcoming(post: Dated) {
   return !hasEnded(post)
 }
 
+/**
+ * Whether one date of a series is already over — which is what greys out a
+ * single Wednesday while the rest of the term stays open. An all-day date
+ * runs until midnight rather than expiring at 00:00 the moment it starts.
+ */
+export function occurrenceEnded(post: Dated, date: Date) {
+  const end = new Date(date)
+  if (post.all_day || !post.starts_at) end.setHours(23, 59, 59, 999)
+  else end.setTime(end.getTime() + durationMs(post))
+  return end.getTime() < Date.now()
+}
+
 /** True when this event happens on more than one day. */
 export function isRecurring(post: Dated) {
   return (post.event_dates?.length ?? 0) > 1

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { HoursEntry, Post, Profile } from '../../lib/types'
-import { dayKey, formatDate, occurrences } from '../../lib/format'
+import { dayKey, formatDate, isRecurring, occurrences } from '../../lib/format'
+import type { SignupRow } from '../../lib/rsvp'
 import { Avatar, EmptyState, Notice, Spinner } from '../ui'
 
 /**
@@ -14,6 +15,7 @@ export default function HoursTab() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [events, setEvents] = useState<Post[]>([])
   const [recent, setRecent] = useState<HoursEntry[]>([])
+  const [eventSignups, setEventSignups] = useState<SignupRow[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -54,13 +56,18 @@ export default function HoursTab() {
   // Picking an event pre-fills its hours, description, date, and attendees.
   async function pickEvent(postId: string) {
     setForm((f) => ({ ...f, post_id: postId }))
+    setEventSignups([])
     if (!postId) return
 
     const event = events.find((e) => e.id === postId)
     if (!event) return
 
-    const { data } = await supabase.from('event_signups').select('user_id').eq('post_id', postId)
-    setSelected(new Set(((data as { user_id: string }[]) ?? []).map((s) => s.user_id)))
+    const { data } = await supabase
+      .from('event_signups')
+      .select('user_id, occurs_on')
+      .eq('post_id', postId)
+    const rows = (data as SignupRow[]) ?? []
+    setEventSignups(rows)
 
     // For a series, default to the most recent date that has already
     // happened — that is the session being logged. An event whose hours are
@@ -68,15 +75,38 @@ export default function HoursTab() {
     const all = occurrences(event)
     const past = all.filter((d) => d.getTime() <= Date.now())
     const served = past[past.length - 1] ?? all[0] ?? null
+    const servedKey = served ? dayKey(served) : form.served_on
 
+    setSelected(new Set(attendeesFor(event, rows, servedKey)))
     setForm((f) => ({
       ...f,
       post_id: postId,
       hours: event.service_hours != null ? String(event.service_hours) : f.hours,
       description: f.description || event.title,
-      served_on: served ? dayKey(served) : f.served_on,
+      served_on: servedKey,
     }))
   }
+
+  /**
+   * Who signed up for the date being logged. A one-date event has no date on
+   * its sign-ups, so everyone counts; a series narrows to that day's list.
+   */
+  function attendeesFor(event: Post, rows: SignupRow[], servedOn: string) {
+    const forDate = isRecurring(event) ? rows.filter((r) => r.occurs_on === servedOn) : rows
+    return forDate.map((r) => r.user_id)
+  }
+
+  /** Re-apply the sign-up list after the officer changes the date by hand. */
+  function reselectForDate() {
+    const event = events.find((e) => e.id === form.post_id)
+    if (!event) return
+    setSelected(new Set(attendeesFor(event, eventSignups, form.served_on)))
+  }
+
+  const pickedEvent = events.find((e) => e.id === form.post_id) ?? null
+  const dateAttendees = pickedEvent
+    ? attendeesFor(pickedEvent, eventSignups, form.served_on).length
+    : 0
 
   async function award(e: React.FormEvent) {
     e.preventDefault()
@@ -156,12 +186,18 @@ export default function HoursTab() {
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>
                 {ev.title}
-                {ev.starts_at ? ` — ${formatDate(ev.starts_at)}` : ''}
+                {ev.recurrence_note
+                  ? ` — ${ev.recurrence_note}`
+                  : ev.starts_at
+                    ? ` — ${formatDate(ev.starts_at)}`
+                    : ''}
               </option>
             ))}
           </select>
           <p className="mt-1 text-xs muted">
-            Choosing an event selects everyone who signed up for it.
+            {pickedEvent && isRecurring(pickedEvent)
+              ? 'This event repeats — the members below are the ones who signed up for the date served.'
+              : 'Choosing an event selects everyone who signed up for it.'}
           </p>
         </div>
 
@@ -190,6 +226,19 @@ export default function HoursTab() {
             />
           </div>
         </div>
+
+        {/* Changing the date by hand does not silently rewrite a selection the
+            officer may have already adjusted — it offers instead. */}
+        {pickedEvent && isRecurring(pickedEvent) && (
+          <button
+            type="button"
+            onClick={reselectForDate}
+            className="btn btn-ghost w-full py-1.5 text-xs"
+          >
+            Select the {dateAttendees} member{dateAttendees === 1 ? '' : 's'} signed up for{' '}
+            {formatDate(form.served_on)}
+          </button>
+        )}
 
         <div>
           <label className="label">What they did</label>

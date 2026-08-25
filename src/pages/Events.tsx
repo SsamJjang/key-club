@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
 import { formatOccurrence, formatServiceHours, hasEnded, nextOccurrence, occurrences } from '../lib/format'
+import { addSignup, datesFor, distinctMembers, removeSignup, signupKey } from '../lib/rsvp'
 import { EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
 import EventCalendar from '../components/EventCalendar'
 import type { CalendarEvent } from '../components/EventCalendar'
@@ -29,20 +30,26 @@ export default function Events() {
         .eq('published', true)
         .eq('category', 'event')
         .order('starts_at', { ascending: true }),
-      supabase.from('event_signups').select('post_id, user_id'),
+      supabase.from('event_signups').select('post_id, user_id, occurs_on'),
     ])
 
     if (eventsRes.error) setError(eventsRes.error.message)
 
-    const signups = (signupsRes.data as { post_id: string; user_id: string }[]) ?? []
+    const signups =
+      (signupsRes.data as { post_id: string; user_id: string; occurs_on: string | null }[]) ?? []
     const events = (eventsRes.data as Post[]) ?? []
 
     setRows(
-      events.map((e) => ({
-        ...e,
-        going: signups.filter((s) => s.post_id === e.id).length,
-        mine: signups.some((s) => s.post_id === e.id && s.user_id === profile?.id),
-      })),
+      events.map((e) => {
+        const rows = signups.filter((s) => s.post_id === e.id)
+        return {
+          ...e,
+          // A member down for five dates of a series is still one member going.
+          going: distinctMembers(rows),
+          mine: rows.some((s) => s.user_id === profile?.id),
+          signups: rows,
+        }
+      }),
     )
     setLoading(false)
   }, [profile?.id])
@@ -52,21 +59,20 @@ export default function Events() {
   }, [load])
 
   // RSVP straight from the calendar, so signing up never costs a page load.
+  // `day` is the date cell that was clicked; for a series it decides which
+  // occurrence the sign-up is for, and is ignored for a one-date event.
   const toggleRsvp = useCallback(
-    async (event: EventRow) => {
+    async (event: EventRow, day: Date | null) => {
       if (!profile) return
       setBusyId(event.id)
       setError(null)
 
-      const { error } = event.mine
-        ? await supabase
-            .from('event_signups')
-            .delete()
-            .eq('post_id', event.id)
-            .eq('user_id', profile.id)
-        : await supabase
-            .from('event_signups')
-            .insert({ post_id: event.id, user_id: profile.id })
+      const key = signupKey(event, day)
+      const has = event.signups.some((s) => s.user_id === profile.id && s.occurs_on === key)
+
+      const { error } = has
+        ? await removeSignup(event.id, profile.id, key)
+        : await addSignup(event.id, profile.id, key)
 
       if (error) setError(error.message)
       await load()
@@ -150,6 +156,7 @@ export default function Events() {
           onRsvp={toggleRsvp}
           busyId={busyId}
           isAdmin={isAdmin}
+          userId={profile?.id ?? null}
         />
       ) : list.length === 0 ? (
         <EmptyState icon="🗓️" title={`No ${tab} events`}>
@@ -205,7 +212,9 @@ export default function Events() {
                   </span>
                   {e.mine && (
                     <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
-                      You’re in
+                      {all.length > 1
+                        ? `You’re in · ${datesFor(e.signups, profile?.id ?? '')}/${all.length} dates`
+                        : 'You’re in'}
                     </span>
                   )}
                 </div>
