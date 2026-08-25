@@ -346,12 +346,15 @@ Existing sign-ups keep meaning exactly what they did.
 Nobody can make every Wednesday of a term, and asking for all-or-nothing is how
 you get an empty sign-up list. A member now picks the dates they can make:
 
-- **On the event page**, a series shows every date as a toggle chip, each with
-  a count of who's coming that day. Tap any number of them. **Select every
-  remaining date** takes the lot; **Clear mine** drops them all.
+- **On the event page**, a row of date tabs sits above the sign-up panel.
+  Picking a tab switches which date the panel below describes — the spots bar,
+  the "I'm going" button, and, most importantly, **exactly who is coming on
+  that day**. A ✓ on a tab marks the dates you're already down for, so your
+  whole selection stays visible while you move between them. **Every remaining
+  date** signs you up for all of them at once; **Clear mine** drops the lot.
 - **On the calendar**, the button under a day cell signs you up for *that*
   date only, and says so.
-- A single-date event is unchanged — one button, no dates to choose.
+- A single-date event is unchanged — the same panel, with no tabs above it.
 
 `event_signups.occurs_on` holds the date. It's `NULL` for a one-date event and
 for an event with no date yet, because "I'm coming to this" needs no date to
@@ -360,10 +363,12 @@ correctly. The primary key moved from `(post_id, user_id)` to a surrogate `id`,
 with a unique index on `(post_id, user_id, coalesce(occurs_on, '0001-01-01'))`
 enforcing one row per member per date.
 
-**Counting.** "3 members going" means three *people*, not three rows — a member
-down for five dates is one member. Capacity works the same way: it caps people
-on the project, not seats per session. The per-date number lives on each date
-chip instead.
+**Counting.** Every number attached to a date is that date's: "3 members going",
+the roster underneath, and the `3 of 6 spots` bar. **Capacity is per date** — 20
+spots means 20 at each session, not 20 people spread across the term, which is
+what a bar drawn per date has to mean to make sense. The only whole-series
+number is the "Signed up" line in the details grid, which counts distinct
+people: a member down for five dates is one member there.
 
 **Awarding hours.** Admin → Hours pre-selects the members who signed up **for
 the date served**, not everyone who ever signed up for the series. Change the

@@ -12,6 +12,7 @@ import {
   hasEnded,
   isRecurring,
   nextOccurrence,
+  occurrenceEnded,
   occurrences,
 } from '../lib/format'
 import {
@@ -29,6 +30,8 @@ export default function PostDetail() {
   const { slug } = useParams<{ slug: string }>()
   const { profile, isAdmin } = useAuth()
   const [post, setPost] = useState<Post | null>(null)
+  /** Which date of a series is on screen. Null = "whichever is next up". */
+  const [pickedDate, setPickedDate] = useState<string | null>(null)
   const [signups, setSignups] = useState<EventSignup[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -69,10 +72,6 @@ export default function PostDetail() {
   }, [slug, loadSignups])
 
   const html = useMemo(() => (post ? renderBody(post.body) : ''), [post])
-  const mine = signups.some((s) => s.user_id === profile?.id)
-  // Capacity counts people, not seats-per-date: a series with room for 20 means
-  // 20 members on the project, however many sessions each of them makes.
-  const full = Boolean(post?.capacity && distinctMembers(signups) >= post.capacity)
 
   /**
    * Toggle one date of a series, or the whole event when it only has one date
@@ -130,28 +129,45 @@ export default function PostDetail() {
   const hours = formatServiceHours(post)
   const myDates = profile ? datesFor(signups, profile.id) : 0
 
-  // One entry per member for the "who's going" list — a member with five
-  // dates in a series is still one person on the roster.
-  const roster = signups.filter(
-    (s, i) => signups.findIndex((o) => o.user_id === s.user_id) === i,
-  )
+  // ---- the date on screen -------------------------------------------
+  // Everything below — the spots bar, the roster, the button — describes
+  // this one date. A single-date event has exactly one, so the same code
+  // path draws both and there is no second layout to keep in sync.
+  const shownDate = series
+    ? (dates.find((d) => dayKey(d) === pickedDate) ?? when)
+    : when
+  const shownKey = series && shownDate ? dayKey(shownDate) : null
+
+  const dateRows = series ? signups.filter((s) => s.occurs_on === shownKey) : signups
+  const dateGoing = dateRows.length
+  const dateMine = dateRows.some((s) => s.user_id === profile?.id)
+
+  // Capacity is per date for a series: twenty spots means twenty at each
+  // session, not twenty people spread across the term.
+  const dateFull = Boolean(post.capacity && dateGoing >= post.capacity)
+  const spotsLeft = post.capacity ? Math.max(0, post.capacity - dateGoing) : null
+  const pct = post.capacity ? Math.min(100, (dateGoing / post.capacity) * 100) : 0
 
   // Three independent reasons a member can't join, each with its own message —
   // "closed" for all of them is what made this confusing to debug.
-  const ended = hasEnded(post)
+  const ended = series && shownDate ? occurrenceEnded(post, shownDate) : hasEnded(post)
   const closed = !post.signup_open
-  const canJoin = isEvent && !ended && !closed && !full
+  const canJoin = isEvent && !ended && !closed && !dateFull
 
   const rsvpLabel = busy
     ? 'Saving…'
-    : mine
+    : dateMine
       ? 'Cancel my spot'
       : ended
-        ? 'This event has passed'
+        ? series
+          ? 'This date has passed'
+          : 'This event has passed'
         : closed
           ? 'Sign-ups are closed'
-          : full
-            ? 'Event is full'
+          : dateFull
+            ? series
+              ? 'This date is full'
+              : 'Event is full'
             : "I'm going"
 
   return (
@@ -247,86 +263,73 @@ export default function PostDetail() {
             <div>
               <dt className="label">Signed up</dt>
               <dd className="font-medium">
-                {distinctMembers(signups)}
-                {post.capacity ? ` of ${post.capacity} spots` : ' members'}
+                {series ? (
+                  <>
+                    {distinctMembers(signups)} members
+                    <span className="muted"> across {dates.length} dates</span>
+                  </>
+                ) : (
+                  <>
+                    {dateGoing}
+                    {post.capacity ? ` of ${post.capacity} spots` : ' members'}
+                  </>
+                )}
               </dd>
             </div>
           </dl>
 
-          {/* A series is picked date by date. Nobody can make every Wednesday
-              of a term, and asking them to commit to all or nothing is how you
-              end up with an empty sign-up list. */}
+          {/* The date switcher. Picking a tab changes which date the panel
+              below describes — it does not sign you up. The ✓ shows the dates
+              you are already down for, so your whole selection stays visible
+              while you move between them. */}
           {series && (
             <div className="mt-5 border-t border-[var(--line)] pt-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="label mb-0">Which dates can you make?</p>
+                <p className="label mb-0">Pick a date</p>
                 <p className="text-xs muted">
                   {myDates > 0
                     ? `You’re down for ${myDates} of ${dates.length}`
-                    : `${dates.length} dates — pick any`}
+                    : `${dates.length} dates — sign up for any`}
                 </p>
               </div>
 
-              <ul className="mt-3 flex flex-wrap gap-1.5">
+              <div
+                role="tablist"
+                aria-label="Event dates"
+                className="mt-3 flex gap-1.5 overflow-x-auto pb-1"
+              >
                 {dates.map((d) => {
                   const key = dayKey(d)
-                  const done = d.getTime() < Date.now()
-                  const going = signups.filter((s) => s.occurs_on === key)
-                  const isMine = going.some((s) => s.user_id === profile?.id)
-                  const locked = busy || done || closed || (!isMine && full)
+                  const done = occurrenceEnded(post, d)
+                  const rows = signups.filter((s) => s.occurs_on === key)
+                  const isMine = rows.some((s) => s.user_id === profile?.id)
+                  const active = key === shownKey
 
                   return (
-                    <li key={key}>
-                      <button
-                        type="button"
-                        onClick={() => void toggleRsvp(key)}
-                        disabled={locked}
-                        aria-pressed={isMine}
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          done
-                            ? 'cursor-not-allowed border-[var(--line)] muted line-through'
-                            : isMine
-                              ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                              : 'border-[var(--line)] hover:border-navy-400 disabled:cursor-not-allowed disabled:opacity-50'
-                        }`}
-                      >
-                        {isMine && <span aria-hidden>✓</span>}
-                        {d.toLocaleDateString(undefined, {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                        {going.length > 0 && (
-                          <span className={isMine ? 'opacity-70' : 'muted'}>· {going.length}</span>
-                        )}
-                      </button>
-                    </li>
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setPickedDate(key)}
+                      className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        active
+                          ? 'border-navy-600 bg-navy-600 text-white'
+                          : done
+                            ? 'border-[var(--line)] muted line-through'
+                            : 'border-[var(--line)] hover:border-navy-400'
+                      }`}
+                    >
+                      {isMine && <span aria-hidden>✓</span>}
+                      {d.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      <span className={active ? 'opacity-70' : 'muted'}>· {rows.length}</span>
+                    </button>
                   )
                 })}
-              </ul>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost py-1.5 text-xs"
-                  onClick={() => void selectAllDates()}
-                  disabled={busy || !canJoin}
-                >
-                  Select every remaining date
-                </button>
-                {myDates > 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost py-1.5 text-xs"
-                    onClick={() => void clearMyDates()}
-                    disabled={busy}
-                  >
-                    Clear mine
-                  </button>
-                )}
-                <span className="text-xs muted">
-                  The number on a date is how many members are coming that day.
-                </span>
               </div>
             </div>
           )}
@@ -337,19 +340,88 @@ export default function PostDetail() {
             </div>
           )}
 
-          {/* A series has no single yes/no — its answer is the date chips
-              above. Only a one-date event gets the plain button. */}
-          {!series && (
-            <div className="mt-6 flex flex-wrap items-center gap-3">
+          {/* One panel, describing the date on screen. A single-date event
+              renders it too — it just has no tabs above it to switch. */}
+          <div className={series ? 'mt-4 rounded-xl bg-[var(--surface)] p-5' : 'mt-6'}>
+            {series && shownDate && (
+              <p className="font-[family-name:var(--font-display)] text-lg font-semibold">
+                {shownDate.toLocaleDateString(undefined, {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+                {!post.all_day && (
+                  <span className="ml-2 text-sm font-normal muted">
+                    {formatTime(post.starts_at)}
+                    {post.ends_at && ` – ${formatTime(post.ends_at)}`}
+                  </span>
+                )}
+              </p>
+            )}
+
+            {/* How full this date is — the nudge to sign up. */}
+            <div className={series ? 'mt-3' : ''}>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  {dateGoing} {dateGoing === 1 ? 'member' : 'members'} going
+                </span>
+                {spotsLeft !== null && (
+                  <span
+                    className={
+                      spotsLeft === 0 ? 'muted' : 'font-semibold text-gold-600 dark:text-gold-300'
+                    }
+                  >
+                    {dateGoing} of {post.capacity} spots
+                    {spotsLeft === 0 ? ' · full' : ` · ${spotsLeft} left`}
+                  </span>
+                )}
+              </div>
+              {post.capacity ? (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--line)]">
+                  <div
+                    className={`h-full rounded-full transition-[width] ${
+                      spotsLeft === 0 ? 'bg-navy-400' : 'bg-gold-400'
+                    }`}
+                    style={{ width: `${Math.max(pct, 3)}%` }}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => void toggleRsvp(null)}
-                disabled={busy || (!canJoin && !mine)}
-                className={`btn ${mine ? 'btn-ghost' : 'btn-primary'}`}
+                onClick={() => void toggleRsvp(shownKey)}
+                disabled={busy || (!canJoin && !dateMine)}
+                className={`btn ${dateMine ? 'btn-ghost' : 'btn-primary'}`}
               >
                 {rsvpLabel}
               </button>
-              {mine ? (
+
+              {series && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost py-1.5 text-sm"
+                    onClick={() => void selectAllDates()}
+                    disabled={busy || closed}
+                  >
+                    Every remaining date
+                  </button>
+                  {myDates > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost py-1.5 text-sm"
+                      onClick={() => void clearMyDates()}
+                      disabled={busy}
+                    >
+                      Clear mine
+                    </button>
+                  )}
+                </>
+              )}
+
+              {dateMine ? (
                 <span className="text-sm text-emerald-700 dark:text-emerald-300">
                   You’re signed up. See you there.
                 </span>
@@ -357,7 +429,9 @@ export default function PostDetail() {
                 !canJoin && (
                   <span className="text-sm muted">
                     {ended
-                      ? 'Sign-ups end once the event is over.'
+                      ? series
+                        ? 'This date has already happened.'
+                        : 'Sign-ups end once the event is over.'
                       : closed
                         ? 'An officer has closed sign-ups for this event.'
                         : 'Every spot has been taken.'}
@@ -365,29 +439,29 @@ export default function PostDetail() {
                 )
               )}
             </div>
-          )}
 
-          {series && !canJoin && (
-            <p className="mt-4 text-sm muted">
-              {ended
-                ? 'This series has finished — its dates are locked.'
-                : closed
-                  ? 'An officer has closed sign-ups for this event.'
-                  : 'Every spot has been taken.'}
-            </p>
-          )}
-
-          {roster.length > 0 && (
-            <div className="mt-6 border-t border-[var(--line)] pt-5">
-              <p className="label">Who’s going</p>
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {roster.map((s) => {
-                  const count = datesFor(signups, s.user_id)
-                  return (
-                    <li key={s.user_id}>
+            {/* Exactly who is coming on the date above. */}
+            <div className="mt-5 border-t border-[var(--line)] pt-4">
+              <p className="label">
+                Who’s coming
+                {series && shownDate && (
+                  <span className="normal-case tracking-normal">
+                    {' '}
+                    on {shownDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </p>
+              {dateRows.length === 0 ? (
+                <p className="mt-2 text-sm muted">
+                  Nobody yet{canJoin ? ' — be the first.' : '.'}
+                </p>
+              ) : (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {dateRows.map((s) => (
+                    <li key={s.id}>
                       <Link
                         to={`/members/${s.user_id}`}
-                        className="flex items-center gap-2 rounded-full border border-[var(--line)] py-1 pl-1 pr-3 text-sm transition hover:border-navy-300"
+                        className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] py-1 pl-1 pr-3 text-sm transition hover:border-navy-300"
                       >
                         <Avatar
                           name={s.profile?.full_name ?? '?'}
@@ -395,18 +469,18 @@ export default function PostDetail() {
                           size={24}
                         />
                         {s.profile?.full_name ?? 'Member'}
-                        {series && (
-                          <span className="text-xs muted">
-                            {count} date{count === 1 ? '' : 's'}
+                        {s.user_id === profile?.id && (
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                            you
                           </span>
                         )}
                       </Link>
                     </li>
-                  )
-                })}
-              </ul>
+                  ))}
+                </ul>
+              )}
             </div>
-          )}
+          </div>
         </section>
       )}
 

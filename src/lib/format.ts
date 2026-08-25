@@ -124,12 +124,25 @@ export function isUpcoming(post: Dated) {
 }
 
 /**
+ * The occurrence falling on a given day, with its real clock time.
+ *
+ * Callers hand us a bare day — a calendar cell, a tab, a date input — all of
+ * which are midnight. The series' time of day lives on starts_at, so anything
+ * asking "is this one over" has to come through here first or it will judge a
+ * 3 PM session by midnight and call it finished all day.
+ */
+export function occurrenceOn(post: Dated, day: Date): Date | null {
+  const key = dayKey(day)
+  return occurrences(post).find((d) => dayKey(d) === key) ?? null
+}
+
+/**
  * Whether one date of a series is already over — which is what greys out a
  * single Wednesday while the rest of the term stays open. An all-day date
  * runs until midnight rather than expiring at 00:00 the moment it starts.
  */
 export function occurrenceEnded(post: Dated, date: Date) {
-  const end = new Date(date)
+  const end = new Date(occurrenceOn(post, date) ?? date)
   if (post.all_day || !post.starts_at) end.setHours(23, 59, 59, 999)
   else end.setTime(end.getTime() + durationMs(post))
   return end.getTime() < Date.now()

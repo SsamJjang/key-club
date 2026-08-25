@@ -45,7 +45,8 @@ function statusFor(event: CalendarEvent, day: Date | null, userId: string | null
   const past = series && day ? occurrenceEnded(event, day) : hasEnded(event)
   if (past) return 'past'
   if (mine) return 'going'
-  if (event.capacity && event.going >= event.capacity && !mine) return 'full'
+  // Capacity is per date for a series — twenty spots at each session.
+  if (event.capacity && rows.length >= event.capacity) return 'full'
   if (!event.signup_open) return 'closed'
   return 'open'
 }
@@ -121,8 +122,6 @@ function EventDetail({
 }) {
   const series = isRecurring(event)
   const status = statusFor(event, on, userId)
-  const spotsLeft = event.capacity ? Math.max(0, event.capacity - event.going) : null
-  const pct = event.capacity ? Math.min(100, (event.going / event.capacity) * 100) : 0
   const gcal = googleCalendarUrl(event, on)
   const hours = formatServiceHours(event)
 
@@ -133,6 +132,10 @@ function EventDetail({
     : event.signups
   const dayGoing = dayKeyFor ? dayRows.length : event.going
   const dayMine = userId ? dayRows.some((s) => s.user_id === userId) : event.mine
+
+  // Capacity is per date, so the bar fills against this date's sign-ups.
+  const spotsLeft = event.capacity ? Math.max(0, event.capacity - dayGoing) : null
+  const pct = event.capacity ? Math.min(100, (dayGoing / event.capacity) * 100) : 0
 
   return (
     <article className="card p-5">
