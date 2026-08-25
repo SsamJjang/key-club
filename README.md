@@ -235,6 +235,56 @@ Until then, use the Apps Script above.
 
 </details>
 
+### Weekly advisor report (Sundays, 9 PM KST)
+
+A second, separate send: one PDF containing the **entire** club database,
+emailed to the advisors. The member emails above tell each student their own
+hour total; this tells the advisors everything.
+
+Script: [`google-apps-script/WeeklyAdvisorReport.gs`](google-apps-script/WeeklyAdvisorReport.gs)
+
+Goes to `choi.jenny@faystonsongdo.org` and `29kim.sunjoong@faystonsongdo.org` —
+the list is the `REPORT_RECIPIENTS` array at the top of the file, or a
+`REPORT_RECIPIENTS` script property (comma-separated) if you'd rather change it
+without editing code.
+
+The PDF has twelve sections:
+
+| | |
+|---|---|
+| 1 | Club logistics — every value from Admin → Settings |
+| 2 | Membership at a glance — headcounts by grade, role, and sign-in status |
+| 3 | Board — who holds which seat, with contact details; vacancies flagged |
+| 4 | Service hours standings — every active member against the hours goal |
+| 5 | This week — hours logged, new signups, new posts |
+| 6 | Upcoming events — with signup counts against capacity |
+| 7 | Event signup rosters — who signed up and who was marked attended |
+| 8 | Complete service hours log — every row, with reviewer and notes |
+| 9 | Complete roster — every column of `members`, inactive included |
+| 10 | Member profiles — titles, pronouns, bios |
+| 11 | All posts, notices and events |
+| 12 | Automated email log — the last 25 scheduled sends |
+
+**Setup.** Add the file to the *same* Apps Script project as
+`WeeklyHoursEmail.gs` — it reuses the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
+script properties and the Seoul timezone, so there is nothing new to configure.
+Then:
+
+1. Run `previewAdvisorReport` — builds the PDF, saves it to your Drive, logs the
+   link, emails nobody. Open it and check it reads right.
+2. Run `sendAdvisorReportTestToMe` — one real email, to you.
+3. Run `createAdvisorReportTrigger` once. Done: Sundays at 9 PM Seoul time.
+
+To stop it, run `deleteAdvisorReportTrigger`. This report does **not** respect
+the on/off switch in Admin → Settings — that switch governs the member-facing
+hour emails only.
+
+Each run writes an `email_log` row with `kind = 'weekly_advisor_report'`, so it
+sits alongside the member sends in the same audit table.
+
+> The PDF carries member names, emails, and phone numbers. It goes to two named
+> school addresses and nowhere else; keep it that way.
+
 ---
 
 ## Deploying
