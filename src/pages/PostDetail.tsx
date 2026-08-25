@@ -3,7 +3,15 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { EventSignup, Post } from '../lib/types'
-import { formatDate, formatDateTime, formatTime, hasEnded } from '../lib/format'
+import {
+  formatDate,
+  formatOccurrence,
+  formatServiceHours,
+  formatTime,
+  hasEnded,
+  nextOccurrence,
+  occurrences,
+} from '../lib/format'
 import { renderBody } from '../lib/markdown'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
 
@@ -87,6 +95,10 @@ export default function PostDetail() {
   }
 
   const isEvent = post.category === 'event'
+  const dates = occurrences(post)
+  // For a series, the next date still to come; once it's over, the last one.
+  const when = nextOccurrence(post) ?? dates[dates.length - 1] ?? null
+  const hours = formatServiceHours(post)
 
   // Three independent reasons a member can't join, each with its own message —
   // "closed" for all of them is what made this confusing to debug.
@@ -163,13 +175,19 @@ export default function PostDetail() {
             <div>
               <dt className="label">When</dt>
               <dd className="font-medium">
-                {post.starts_at ? (
+                {when ? (
                   <>
-                    {formatDateTime(post.starts_at)}
-                    {post.ends_at && ` – ${formatTime(post.ends_at)}`}
+                    {formatOccurrence(when, post.all_day)}
+                    {post.ends_at && !post.all_day && ` – ${formatTime(post.ends_at)}`}
+                    {post.all_day && <span className="muted"> · time TBA</span>}
                   </>
                 ) : (
                   <span className="muted">Date to be announced</span>
+                )}
+                {post.recurrence_note && (
+                  <span className="mt-0.5 block text-sm font-normal muted">
+                    🔁 {post.recurrence_note}
+                  </span>
                 )}
               </dd>
             </div>
@@ -179,10 +197,15 @@ export default function PostDetail() {
                 <dd className="font-medium">{post.location}</dd>
               </div>
             )}
-            {post.service_hours ? (
+            {hours ? (
               <div>
                 <dt className="label">Service hours</dt>
-                <dd className="font-medium">{post.service_hours} hrs</dd>
+                <dd className="font-medium">
+                  {hours}
+                  {post.hours_tbd && (
+                    <span className="ml-2 text-sm font-normal muted">announced closer to the day</span>
+                  )}
+                </dd>
               </div>
             ) : null}
             <div>
@@ -193,6 +216,38 @@ export default function PostDetail() {
               </dd>
             </div>
           </dl>
+
+          {/* Every date, spelled out. One sign-up covers the whole series, so
+              members need to see exactly what they are committing to. */}
+          {dates.length > 1 && (
+            <div className="mt-5 border-t border-[var(--line)] pt-5">
+              <p className="label">All {dates.length} dates</p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {dates.map((d) => {
+                  const done = d.getTime() < Date.now()
+                  return (
+                    <li
+                      key={d.toISOString()}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        done
+                          ? 'border-[var(--line)] muted line-through'
+                          : 'border-navy-200 text-navy-700 dark:border-navy-600 dark:text-navy-200'
+                      }`}
+                    >
+                      {d.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="mt-2 text-xs muted">
+                Signing up once covers every date in this series.
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="mt-5">

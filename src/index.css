@@ -170,12 +170,15 @@ html.dark {
   .prose-club > * + * {
     margin-top: 1rem;
   }
+  /* Sans, matching the body text. The display serif is for page furniture —
+     page titles, card titles, the calendar's month — not for headings someone
+     types inside a post, where it read as a different site's typography. */
   .prose-club h1,
   .prose-club h2,
   .prose-club h3 {
-    font-family: var(--font-display);
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    letter-spacing: -0.015em;
     margin-top: 2rem;
   }
   .prose-club h1 { font-size: 1.6rem; }

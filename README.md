@@ -287,6 +287,58 @@ sits alongside the member sends in the same audit table.
 
 ---
 
+## Update 004 — event scheduling
+
+Run [`supabase/004_event_scheduling.sql`](supabase/004_event_scheduling.sql) in
+the SQL editor. Safe to re-run, and nothing about existing events changes.
+
+**Event is the default post type.** New posts open as an event with the date
+fields already showing. Switch **Type** to News or Notice for a post with no
+date — doing so clears the event columns rather than leaving orphaned dates on
+the calendar.
+
+**Date and time are separate fields.** They used to be one `datetime-local`
+input, which produces *nothing at all* until both halves are filled — so an
+officer who knew the date but not the time saved an event with no date. Now the
+date stands on its own: the event saves, the calendar places it, and it reads
+"time TBA" until someone fills the time in. Leaving the date blank too is still
+fine — those events collect under "No date set yet".
+
+**Events can repeat.** Three modes in the editor:
+
+| Mode | For |
+|---|---|
+| Just once | A single day. |
+| Every week | Pick the weekdays and an end date — "every Wed until Dec 17". |
+| Pick dates | A run of consecutive days, or any hand-picked set. |
+
+A series is stored as a **concrete list of dates** in `posts.event_dates`, not
+as a recurrence rule. A school year ends, so every series is finite; a stored
+list is something an officer can read back, delete one date out of for a
+holiday, and trust. The editor shows the generated dates before you save, and
+caps a series at 200 dates so a mistyped end year can't fill the table.
+
+One sign-up covers the whole series — the event page lists every date and says
+so. The calendar draws the event on each of its dates, and an event is only
+"past" once its **last** date has gone by.
+
+`recurrence_note` holds a display sentence like `Every Wed until Dec 17`. It's
+derived from the dates themselves, so an event edited later still describes
+itself correctly; nothing ever parses it back.
+
+**Service hours can be TBD.** Distinct from "no hours", which stays the default.
+TBD shows the word instead of a number so members still sign up, and the
+awarding form in Admin → Hours leaves the amount for the officer to type.
+
+### Typography
+
+Headings inside post bodies (`prose-club h1/h2/h3`) are sans now, matching the
+body text. The display serif is still used for page furniture — page titles,
+card titles, the calendar's month — but in a written post it read as though the
+paragraph and its own heading came from different sites.
+
+---
+
 ## Deploying
 
 The build is static files in `dist/`. Routing is hash-based, so deep links work

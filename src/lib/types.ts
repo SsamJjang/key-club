@@ -52,8 +52,16 @@ export interface Post {
   author_id: string | null
   starts_at: string | null
   ends_at: string | null
+  /** Every date in the series, the first included. Null/empty = one occurrence. */
+  event_dates: string[] | null
+  /** Display-only sentence describing the series, e.g. "Every Wed until Dec 17". */
+  recurrence_note: string | null
+  /** Date known, time not. starts_at is midnight local; render no time. */
+  all_day: boolean
   location: string | null
   service_hours: number | null
+  /** Hours are coming but undecided — distinct from service_hours being null. */
+  hours_tbd: boolean
   capacity: number | null
   signup_open: boolean
   created_at: string

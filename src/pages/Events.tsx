@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
-import { formatDate, formatTime, hasEnded } from '../lib/format'
+import { formatOccurrence, formatServiceHours, hasEnded, nextOccurrence, occurrences } from '../lib/format'
 import { EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
 import EventCalendar from '../components/EventCalendar'
 import type { CalendarEvent } from '../components/EventCalendar'
@@ -159,7 +159,15 @@ export default function Events() {
         </EmptyState>
       ) : (
         <ol className="space-y-3">
-          {list.map((e) => (
+          {list.map((e) => {
+            // The badge shows the occurrence that matters to the reader: the
+            // next one still to come, or the final one for a series that is
+            // already over.
+            const all = occurrences(e)
+            const when = tab === 'upcoming' ? (nextOccurrence(e) ?? all[0]) : all[all.length - 1]
+            const hours = formatServiceHours(e)
+
+            return (
             <li key={e.id}>
               <Link
                 to={`/post/${e.slug}`}
@@ -167,12 +175,10 @@ export default function Events() {
               >
                 <div className="w-16 shrink-0 rounded-xl bg-navy-50 py-2 text-center dark:bg-navy-800">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-navy-500 dark:text-navy-200">
-                    {e.starts_at
-                      ? new Date(e.starts_at).toLocaleDateString(undefined, { month: 'short' })
-                      : '—'}
+                    {when ? when.toLocaleDateString(undefined, { month: 'short' }) : '—'}
                   </div>
                   <div className="font-[family-name:var(--font-display)] text-2xl font-semibold leading-none">
-                    {e.starts_at ? new Date(e.starts_at).getDate() : '·'}
+                    {when ? when.getDate() : '·'}
                   </div>
                 </div>
 
@@ -181,9 +187,14 @@ export default function Events() {
                     {e.title}
                   </h3>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm muted">
-                    {e.starts_at && <span>{formatDate(e.starts_at)} · {formatTime(e.starts_at)}</span>}
+                    {when ? (
+                      <span>{formatOccurrence(when, e.all_day)}</span>
+                    ) : (
+                      <span>Date to be announced</span>
+                    )}
+                    {e.recurrence_note && <span>🔁 {e.recurrence_note}</span>}
                     {e.location && <span>📍 {e.location}</span>}
-                    {e.service_hours ? <span>⏱️ {e.service_hours} hrs</span> : null}
+                    {hours && <span>⏱️ {hours}</span>}
                   </p>
                 </div>
 
@@ -200,7 +211,8 @@ export default function Events() {
                 </div>
               </Link>
             </li>
-          ))}
+            )
+          })}
         </ol>
       )}
     </div>

@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Post } from '../lib/types'
-import { formatTime, hasEnded } from '../lib/format'
+import {
+  dayKey,
+  formatServiceHours,
+  formatTime,
+  fromDayKey as fromKey,
+  hasEnded,
+  nextOccurrence,
+  occurrences,
+} from '../lib/format'
 
 export interface CalendarEvent extends Post {
   going: number
@@ -10,18 +18,8 @@ export interface CalendarEvent extends Post {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** Local YYYY-MM-DD. Never toISOString here — it shifts the day by timezone. */
-function dayKey(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function fromKey(key: string) {
-  return new Date(`${key}T00:00:00`)
 }
 
 type Status = 'past' | 'going' | 'full' | 'closed' | 'open'
@@ -50,17 +48,39 @@ const DOT: Record<Status, string> = {
   open: 'bg-gold-400',
 }
 
-/** A "add this to my own calendar" link, so members actually turn up. */
-function googleCalendarUrl(event: CalendarEvent) {
-  if (!event.starts_at) return null
-  const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, '')
-  const start = new Date(event.starts_at)
-  const end = event.ends_at ? new Date(event.ends_at) : new Date(start.getTime() + 36e5)
+/**
+ * An "add this to my own calendar" link, so members actually turn up.
+ *
+ * `on` is the occurrence the member is looking at — for a weekly series that
+ * is the specific Wednesday whose cell they clicked, not the first one back
+ * in September. An event with no time set exports as a Google all-day event
+ * rather than a misleading midnight slot.
+ */
+function googleCalendarUrl(event: CalendarEvent, on: Date | null) {
+  const first = event.starts_at ? new Date(event.starts_at) : null
+  if (!first) return null
+
+  // `on` arrives as midnight of the clicked day; the clock time lives on
+  // starts_at and is shared by every occurrence in the series.
+  const start = on ? new Date(on) : new Date(first)
+  if (on && !event.all_day) start.setHours(first.getHours(), first.getMinutes(), 0, 0)
+
+  let dates: string
+  if (event.all_day) {
+    const plain = (d: Date) => dayKey(d).replace(/-/g, '')
+    const next = new Date(start)
+    next.setDate(next.getDate() + 1) // Google's end date is exclusive.
+    dates = `${plain(start)}/${plain(next)}`
+  } else {
+    const stamp = (d: Date) => d.toISOString().replace(/[-:]|\.\d{3}/g, '')
+    const span = event.ends_at ? new Date(event.ends_at).getTime() - first.getTime() : 36e5
+    dates = `${stamp(start)}/${stamp(new Date(start.getTime() + span))}`
+  }
 
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: event.title,
-    dates: `${stamp(start.toISOString())}/${stamp(end.toISOString())}`,
+    dates,
     details: event.summary ?? '',
     location: event.location ?? '',
   })
@@ -71,15 +91,19 @@ function EventDetail({
   event,
   onRsvp,
   busy,
+  on = null,
 }: {
   event: CalendarEvent
   onRsvp: (event: CalendarEvent) => void
   busy: boolean
+  /** Which occurrence this card is being shown under, for the calendar link. */
+  on?: Date | null
 }) {
   const status = statusOf(event)
   const spotsLeft = event.capacity ? Math.max(0, event.capacity - event.going) : null
   const pct = event.capacity ? Math.min(100, (event.going / event.capacity) * 100) : 0
-  const gcal = googleCalendarUrl(event)
+  const gcal = googleCalendarUrl(event, on)
+  const hours = formatServiceHours(event)
 
   return (
     <article className="card p-5">
@@ -94,14 +118,18 @@ function EventDetail({
           </Link>
 
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm muted">
-            {event.starts_at && (
-              <span>
-                🕒 {formatTime(event.starts_at)}
-                {event.ends_at && ` – ${formatTime(event.ends_at)}`}
-              </span>
-            )}
+            {event.starts_at &&
+              (event.all_day ? (
+                <span>🕒 Time TBA</span>
+              ) : (
+                <span>
+                  🕒 {formatTime(event.starts_at)}
+                  {event.ends_at && ` – ${formatTime(event.ends_at)}`}
+                </span>
+              ))}
+            {event.recurrence_note && <span>🔁 {event.recurrence_note}</span>}
             {event.location && <span>📍 {event.location}</span>}
-            {event.service_hours ? <span>⏱️ {event.service_hours} hrs</span> : null}
+            {hours && <span>⏱️ {hours}</span>}
           </p>
 
           {event.summary && <p className="mt-2 text-sm">{event.summary}</p>}
@@ -186,14 +214,17 @@ export default function EventCalendar({
   const gridRef = useRef<HTMLDivElement>(null)
   const [focusDay, setFocusDay] = useState<string | null>(null)
 
+  // A recurring event lands on the grid once per date in its series, so a
+  // Wednesday tutoring block fills every Wednesday rather than only its first.
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     for (const event of events) {
-      if (!event.starts_at) continue
-      const key = dayKey(new Date(event.starts_at))
-      const list = map.get(key)
-      if (list) list.push(event)
-      else map.set(key, [event])
+      for (const date of occurrences(event)) {
+        const key = dayKey(date)
+        const list = map.get(key)
+        if (list) list.push(event)
+        else map.set(key, [event])
+      }
     }
     for (const list of map.values()) {
       list.sort((a, b) => (a.starts_at ?? '').localeCompare(b.starts_at ?? ''))
@@ -221,30 +252,30 @@ export default function EventCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor])
 
-  const undated = events.filter((e) => !e.starts_at)
+  const undated = events.filter((e) => occurrences(e).length === 0)
   const selectedEvents = byDay.get(selected) ?? []
   const todayKey = dayKey(today)
 
+  // Counted once per event, however many times it recurs this month.
   const monthEvents = useMemo(
     () =>
-      events.filter((e) => {
-        if (!e.starts_at) return false
-        const d = new Date(e.starts_at)
-        return d.getMonth() === cursor.getMonth() && d.getFullYear() === cursor.getFullYear()
-      }),
+      events.filter((e) =>
+        occurrences(e).some(
+          (d) => d.getMonth() === cursor.getMonth() && d.getFullYear() === cursor.getFullYear(),
+        ),
+      ),
     [events, cursor],
   )
 
   const monthGoing = monthEvents.filter((e) => e.mine).length
   const monthOpen = monthEvents.filter((e) => statusOf(e) === 'open').length
 
-  const nextEvent = useMemo(
-    () =>
-      events
-        .filter((e) => e.starts_at && !hasEnded(e))
-        .sort((a, b) => (a.starts_at ?? '').localeCompare(b.starts_at ?? ''))[0],
-    [events],
-  )
+  const nextUp = useMemo(() => {
+    const dated = events
+      .map((e) => ({ event: e, when: nextOccurrence(e) }))
+      .filter((x): x is { event: CalendarEvent; when: Date } => x.when !== null)
+    return dated.sort((a, b) => a.when.getTime() - b.when.getTime())[0]
+  }, [events])
 
   function shiftMonth(delta: number) {
     setCursor((c) => new Date(c.getFullYear(), c.getMonth() + delta, 1))
@@ -445,22 +476,18 @@ export default function EventCalendar({
         </div>
       </div>
 
-      {monthEvents.length === 0 && nextEvent?.starts_at && (
+      {monthEvents.length === 0 && nextUp && (
         <div className="mt-4 text-center">
           <button
             type="button"
             className="btn btn-ghost text-sm"
             onClick={() => {
-              const d = new Date(nextEvent.starts_at!)
-              setCursor(startOfMonth(d))
-              setSelected(dayKey(d))
+              setCursor(startOfMonth(nextUp.when))
+              setSelected(dayKey(nextUp.when))
             }}
           >
             Jump to the next event →{' '}
-            {new Date(nextEvent.starts_at).toLocaleDateString(undefined, {
-              month: 'short',
-              day: 'numeric',
-            })}
+            {nextUp.when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
           </button>
         </div>
       )}
@@ -496,6 +523,7 @@ export default function EventCalendar({
                 event={event}
                 onRsvp={onRsvp}
                 busy={busyId === event.id}
+                on={fromKey(selected)}
               />
             ))}
           </div>

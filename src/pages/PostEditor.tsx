@@ -1,34 +1,29 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import EventSchedule from '../components/EventSchedule'
 import ImageUpload from '../components/ImageUpload'
 import RichTextEditor from '../components/RichTextEditor'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Category, Post } from '../lib/types'
 import { slugify } from '../lib/format'
+import { BLANK_SCHEDULE, fromPost, toPayload, type ScheduleForm } from '../lib/schedule'
 import { Notice, PageHeader, Spinner } from '../components/ui'
-
-/** datetime-local wants "YYYY-MM-DDTHH:mm" in local time. */
-function toLocalInput(iso: string | null) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 
 const BLANK = {
   title: '',
   slug: '',
   summary: '',
   body: '',
-  category: 'news' as Category,
+  // Events are the overwhelming majority of what gets posted, and they have
+  // the most fields to fill in — so they are what the form opens on.
+  category: 'event' as Category,
   cover_url: '',
   pinned: false,
   published: false,
-  starts_at: '',
-  ends_at: '',
   location: '',
   service_hours: '',
+  hours_tbd: false,
   capacity: '',
   signup_open: true,
 }
@@ -40,6 +35,7 @@ export default function PostEditor() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState(BLANK)
+  const [schedule, setSchedule] = useState<ScheduleForm>(BLANK_SCHEDULE)
   const [slugTouched, setSlugTouched] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -68,13 +64,13 @@ export default function PostEditor() {
             cover_url: p.cover_url ?? '',
             pinned: p.pinned,
             published: p.published,
-            starts_at: toLocalInput(p.starts_at),
-            ends_at: toLocalInput(p.ends_at),
             location: p.location ?? '',
             service_hours: p.service_hours != null ? String(p.service_hours) : '',
+            hours_tbd: p.hours_tbd,
             capacity: p.capacity != null ? String(p.capacity) : '',
             signup_open: p.signup_open,
           })
+          setSchedule(fromPost(p))
           setSlugTouched(true)
         }
         setLoading(false)
@@ -96,6 +92,13 @@ export default function PostEditor() {
     setSaving(true)
     setError(null)
 
+    // A news post or notice keeps none of the event columns, so switching an
+    // event back to "News article" clears its dates rather than leaving them
+    // to haunt the calendar.
+    const dates = isEvent
+      ? toPayload(schedule)
+      : { starts_at: null, ends_at: null, event_dates: null, recurrence_note: null, all_day: false }
+
     const payload = {
       title: form.title.trim(),
       slug: (form.slug.trim() || slugify(form.title)).toLowerCase(),
@@ -106,10 +109,11 @@ export default function PostEditor() {
       pinned: form.pinned,
       published: publish ?? form.published,
       author_id: profile?.id ?? null,
-      starts_at: isEvent && form.starts_at ? new Date(form.starts_at).toISOString() : null,
-      ends_at: isEvent && form.ends_at ? new Date(form.ends_at).toISOString() : null,
+      ...dates,
       location: isEvent ? form.location.trim() || null : null,
-      service_hours: isEvent && form.service_hours ? Number(form.service_hours) : null,
+      // TBD and a number are mutually exclusive — the database enforces it too.
+      service_hours: isEvent && !form.hours_tbd && form.service_hours ? Number(form.service_hours) : null,
+      hours_tbd: isEvent && form.hours_tbd,
       capacity: isEvent && form.capacity ? Number(form.capacity) : null,
       signup_open: isEvent ? form.signup_open : true,
     }
@@ -137,8 +141,8 @@ export default function PostEditor() {
     <div className="rise">
       <PageHeader
         eyebrow={isNew ? 'New' : 'Editing'}
-        title={isNew ? 'Write a post' : form.title || 'Untitled'}
-        subtitle="News, notices, and events all live here. Pick Event to unlock date, location, and sign-ups."
+        title={isNew ? 'New event' : form.title || 'Untitled'}
+        subtitle="Events, news, and notices all live here. Switch Type to News or Notice for a post with no date."
         action={
           <button type="button" className="btn btn-ghost" onClick={() => navigate('/admin')}>
             Cancel
@@ -182,9 +186,9 @@ export default function PostEditor() {
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
                 >
+                  <option value="event">Event</option>
                   <option value="news">News article</option>
                   <option value="notice">Notice</option>
-                  <option value="event">Event</option>
                 </select>
               </div>
               <div>
@@ -261,28 +265,10 @@ export default function PostEditor() {
 
           {isEvent && (
             <div className="card space-y-4 p-6">
-              <h2 className="label">Event details</h2>
-              <div>
-                <label className="label" htmlFor="starts">Starts</label>
-                <input
-                  id="starts"
-                  type="datetime-local"
-                  className="field"
-                  value={form.starts_at}
-                  onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="ends">Ends</label>
-                <input
-                  id="ends"
-                  type="datetime-local"
-                  className="field"
-                  value={form.ends_at}
-                  onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
-                />
-              </div>
-              <div>
+              <h2 className="label">When</h2>
+              <EventSchedule value={schedule} onChange={setSchedule} />
+
+              <div className="border-t border-[var(--line)] pt-4">
                 <label className="label" htmlFor="location">Location</label>
                 <input
                   id="location"
@@ -301,7 +287,9 @@ export default function PostEditor() {
                     step="0.5"
                     min="0"
                     className="field"
-                    value={form.service_hours}
+                    value={form.hours_tbd ? '' : form.service_hours}
+                    disabled={form.hours_tbd}
+                    placeholder={form.hours_tbd ? 'TBD' : 'None'}
                     onChange={(e) => setForm({ ...form, service_hours: e.target.value })}
                   />
                 </div>
@@ -318,6 +306,20 @@ export default function PostEditor() {
                   />
                 </div>
               </div>
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.hours_tbd}
+                  onChange={(e) => setForm({ ...form, hours_tbd: e.target.checked })}
+                  className="size-4"
+                />
+                <span>
+                  Service hours are TBD
+                  <span className="block text-xs muted">
+                    Shows “TBD” instead of a number, so members still sign up.
+                  </span>
+                </span>
+              </label>
               <label className="flex items-center gap-3 text-sm">
                 <input
                   type="checkbox"

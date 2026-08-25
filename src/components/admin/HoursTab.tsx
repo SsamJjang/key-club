@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { HoursEntry, Post, Profile } from '../../lib/types'
-import { formatDate } from '../../lib/format'
+import { dayKey, formatDate, occurrences } from '../../lib/format'
 import { Avatar, EmptyState, Notice, Spinner } from '../ui'
 
 /**
@@ -61,12 +61,20 @@ export default function HoursTab() {
 
     const { data } = await supabase.from('event_signups').select('user_id').eq('post_id', postId)
     setSelected(new Set(((data as { user_id: string }[]) ?? []).map((s) => s.user_id)))
+
+    // For a series, default to the most recent date that has already
+    // happened — that is the session being logged. An event whose hours are
+    // still TBD has no number to prefill, so whatever is typed stays.
+    const all = occurrences(event)
+    const past = all.filter((d) => d.getTime() <= Date.now())
+    const served = past[past.length - 1] ?? all[0] ?? null
+
     setForm((f) => ({
       ...f,
       post_id: postId,
       hours: event.service_hours != null ? String(event.service_hours) : f.hours,
       description: f.description || event.title,
-      served_on: event.starts_at ? event.starts_at.slice(0, 10) : f.served_on,
+      served_on: served ? dayKey(served) : f.served_on,
     }))
   }
 

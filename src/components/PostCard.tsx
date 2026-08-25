@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
 import type { Post } from '../lib/types'
-import { formatDateTime, relative } from '../lib/format'
+import { formatOccurrence, nextOccurrence, occurrences, relative } from '../lib/format'
 import { Avatar, CategoryBadge } from './ui'
 
 export default function PostCard({ post, compact = false }: { post: Post; compact?: boolean }) {
   const isEvent = post.category === 'event'
+  const all = occurrences(post)
+  const when = nextOccurrence(post) ?? all[all.length - 1] ?? null
 
   return (
     <article className="card group overflow-hidden transition hover:border-navy-300 dark:hover:border-navy-600">
@@ -38,9 +40,12 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
 
           {post.summary && <p className="mt-2 line-clamp-2 text-sm muted">{post.summary}</p>}
 
-          {isEvent && post.starts_at && (
+          {isEvent && when && (
             <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium text-navy-600 dark:text-navy-200">
-              <span>🗓️ {formatDateTime(post.starts_at)}</span>
+              <span>🗓️ {formatOccurrence(when, post.all_day)}</span>
+              {post.recurrence_note && (
+                <span className="muted font-normal">🔁 {post.recurrence_note}</span>
+              )}
               {post.location && <span className="muted font-normal">📍 {post.location}</span>}
             </p>
           )}
