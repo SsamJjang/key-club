@@ -248,3 +248,137 @@ html.dark {
   .rise { animation: none; }
   html { scroll-behavior: auto; }
 }
+
+/* =====================================================================
+   Event colour coding.
+
+   The palette is seeded from ONE hex per colour (--ec) and everything
+   else is mixed against the current surface, so a single value works on
+   both themes and nothing has to be hand-tuned twice. Set the colour by
+   putting data-ec="basil" on an element; descendants inherit it.
+   ===================================================================== */
+@layer components {
+  [data-ec] { --ec: #0288d1; }
+  [data-ec='tomato']    { --ec: #d93025; }
+  [data-ec='flamingo']  { --ec: #e2756b; }
+  [data-ec='tangerine'] { --ec: #ef6c1a; }
+  [data-ec='banana']    { --ec: #d99e00; }
+  [data-ec='sage']      { --ec: #33b679; }
+  [data-ec='basil']     { --ec: #0b8043; }
+  [data-ec='peacock']   { --ec: #0288d1; }
+  [data-ec='blueberry'] { --ec: #3f51b5; }
+  [data-ec='lavender']  { --ec: #7986cb; }
+  [data-ec='grape']     { --ec: #8e24aa; }
+  [data-ec='graphite']  { --ec: #5f6368; }
+
+  /* A tinted chip — the month grid and all-day rows. */
+  .ec-soft {
+    background: color-mix(in srgb, var(--ec) 13%, var(--card));
+    color: color-mix(in srgb, var(--ec) 78%, var(--ink));
+    border: 1px solid color-mix(in srgb, var(--ec) 26%, transparent);
+  }
+  html.dark .ec-soft {
+    background: color-mix(in srgb, var(--ec) 28%, var(--card));
+    color: color-mix(in srgb, var(--ec) 22%, var(--ink));
+    border-color: color-mix(in srgb, var(--ec) 45%, transparent);
+  }
+
+  /* A solid block — the time grid, where events must read against lines. */
+  .ec-solid {
+    background: color-mix(in srgb, var(--ec) 88%, var(--card));
+    color: #fff;
+    border: 1px solid color-mix(in srgb, var(--ec) 100%, transparent);
+  }
+  html.dark .ec-solid {
+    background: color-mix(in srgb, var(--ec) 62%, var(--card));
+  }
+
+  .ec-dot { background: var(--ec); }
+  .ec-rule { border-left: 3px solid var(--ec); }
+  .ec-text { color: color-mix(in srgb, var(--ec) 78%, var(--ink)); }
+  html.dark .ec-text { color: color-mix(in srgb, var(--ec) 30%, var(--ink)); }
+
+  /* Anything already over is quiet, whatever colour it carries. */
+  .ec-past { opacity: 0.5; }
+  .ec-past.ec-solid { background: color-mix(in srgb, var(--ec) 45%, var(--card)); }
+
+  /* "You are going" reads at a glance without spending a second colour on
+     it: a check and a heavier left rule on the event's own colour. */
+  .ec-going { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--ec) 100%, transparent); }
+}
+
+/* =====================================================================
+   Calendar chrome.
+   ===================================================================== */
+@layer components {
+  /* One hour of the week/day time grid. Set by the component so the two
+     stay in step. */
+  .cal-grid { --hour: 48px; }
+
+  .cal-hour-line {
+    border-top: 1px solid var(--line);
+  }
+  .cal-half-line {
+    border-top: 1px dashed color-mix(in srgb, var(--line) 65%, transparent);
+  }
+
+  /* Outside working hours the grid dims, so a school day stands out. */
+  .cal-offhours {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
+  html.dark .cal-offhours {
+    background: color-mix(in srgb, #000 22%, transparent);
+  }
+
+  .cal-now {
+    background: #ea4335;
+    height: 2px;
+  }
+  .cal-now::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    background: #ea4335;
+  }
+
+  /* The floating event card. Fixed-positioned by the component. */
+  .cal-popover {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    box-shadow: 0 18px 48px -12px rgb(15 35 64 / 0.35);
+  }
+  html.dark .cal-popover {
+    box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.7);
+  }
+
+  .cal-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  /* A keyboard-shortcut key. */
+  .kbd {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    padding: 0.1rem 0.35rem;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 0.35rem;
+    background: var(--surface);
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .cal-scroll { overflow: visible !important; max-height: none !important; }
+  body { background: #fff; }
+}

@@ -377,6 +377,90 @@ overwrite a list you've already adjusted.
 
 ---
 
+## Update 006 — the calendar, rebuilt
+
+Run [`supabase/006_event_colors.sql`](supabase/006_event_colors.sql). Safe to
+re-run; every existing event keeps working and picks up a sensible default
+colour.
+
+The calendar was one month grid. It is now four views over one anchor date,
+built around the way a working calendar actually gets used.
+
+### Colour coding
+
+Every event can carry a colour — an eleven-name palette in
+[`src/lib/eventColors.ts`](src/lib/eventColors.ts), chosen in the event editor.
+
+Named colours, not hex codes, on purpose. A fixed vocabulary is something you
+can **filter** by and **legend**, which free-form colour cannot be; and the
+stylesheet mixes each seed colour against the current surface, so one value
+stays legible on both the light and the dark theme. `posts.color` is `NULL`
+until someone picks, and falls back to a per-category default.
+
+`posts.calendar_label` is the optional word the colour *means* — "Service",
+"Board", "Fundraiser". It names the colour in the sidebar's filter list, so the
+legend explains the scheme instead of just naming paint.
+
+### Four views
+
+| View | Key | For |
+|---|---|---|
+| Day | `D` | One day, hour by hour. |
+| Week | `W` | The working week, with overlaps side by side. |
+| Month | `M` | The shape of the term. |
+| Schedule | `A` | A flat list of what's next — no empty days. |
+
+Week and Day are a real time grid: events are positioned by their actual start
+and end, **overlapping events are laid out in columns** so a double-booked
+afternoon looks double-booked, a red line tracks the current time, and the grid
+opens scrolled to the hours that have something in them rather than to
+midnight. Hours outside the "shaded day" range are dimmed.
+
+The Schedule view replaces the old list/calendar toggle on the Events page.
+There is now one place events are drawn and one set of filters over all of it.
+
+### Clicking an event answers the question in place
+
+An event opens a **popover** anchored to whatever you clicked — time, place,
+hours, how full it is, and the sign-up button itself, plus Add to Google,
+Download .ics, Copy link, and Edit for officers. Signing up never costs a page
+load or a navigation. On a phone the popover becomes a bottom sheet.
+
+### The sidebar
+
+A mini month with density dots for jumping somewhere far away; filters that
+narrow rather than navigate (**mine only**, **open sign-ups**, **has service
+hours**, **hide past**); the colour legend; and view options — week starts
+Sunday or Monday, show weekends, show week numbers, and the shaded-day range.
+Everything applies instantly and persists in `localStorage`.
+
+Filters apply to whole **events**, not dates, so a weekly series either belongs
+on the filtered calendar or it doesn't and never flickers in and out week by
+week. "Hide past" is the one exception, because it is genuinely per date.
+
+### Export
+
+`Download this calendar` writes one `.ics` of everything currently showing,
+filters included, importable into Google, Outlook, or Apple Calendar. A series
+exports as one `VEVENT` per date rather than an `RRULE` — matching how it is
+stored, so a week removed for a holiday stays removed. Each event carries a
+30-minute reminder and a link back to its page.
+
+### Officer shortcuts
+
+Hovering a day in Month shows a `+`; clicking an empty hour in Week or Day does
+the same thing. Either lands in the editor **with the date and time already
+filled in** (`/admin/posts/new?date=…&time=…`).
+
+### Keyboard
+
+`T` today · `N`/`P` or `←`/`→` move a period · `D` `W` `M` `A` switch view ·
+`/` search · `F` sidebar · `C` new event · `Esc` close · `?` the list. Arrow
+keys move a day at a time inside the month grid. Shortcuts are off while you're
+typing in a field.
+
+---
+
 ## Deploying
 
 The build is static files in `dist/`. Routing is hash-based, so deep links work
@@ -412,7 +496,11 @@ Configuration → Redirect URLs, or Google sign-in will bounce.
 src/
   context/AuthContext.tsx   session + profile, translates roster rejections
   components/               Layout, ProtectedRoute, PostCard, UI kit
+  components/calendar/      month grid, time grid, schedule, popover, rail
   lib/                      supabase client, types, formatting, markdown
+  lib/calendar.ts           occurrence expansion, grid maths, overlap layout
+  lib/eventColors.ts        the named event palette
+  lib/ics.ts                .ics export and the Add-to-Google link
   pages/                    Login, Home, News, Events, PostDetail,
                             Directory, MemberProfile, MyProfile, Hours,
                             Admin, PostEditor

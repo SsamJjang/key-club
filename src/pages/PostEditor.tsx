@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import ColorPicker from '../components/ColorPicker'
 import EventSchedule from '../components/EventSchedule'
 import ImageUpload from '../components/ImageUpload'
 import RichTextEditor from '../components/RichTextEditor'
@@ -7,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Category, Post } from '../lib/types'
 import { slugify } from '../lib/format'
+import { isColorKey, type EventColorKey } from '../lib/eventColors'
 import { BLANK_SCHEDULE, fromPost, toPayload, type ScheduleForm } from '../lib/schedule'
 import { Notice, PageHeader, Spinner } from '../components/ui'
 
@@ -26,6 +28,8 @@ const BLANK = {
   hours_tbd: false,
   capacity: '',
   signup_open: true,
+  color: null as EventColorKey | null,
+  calendar_label: '',
 }
 
 export default function PostEditor() {
@@ -33,9 +37,21 @@ export default function PostEditor() {
   const isNew = !id || id === 'new'
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
 
   const [form, setForm] = useState(BLANK)
-  const [schedule, setSchedule] = useState<ScheduleForm>(BLANK_SCHEDULE)
+  // Clicking an empty day or hour on the calendar lands here with the slot
+  // already filled in, which is the difference between "add an event" being
+  // a chore and being a click.
+  const [schedule, setSchedule] = useState<ScheduleForm>(() =>
+    isNew
+      ? {
+          ...BLANK_SCHEDULE,
+          start_date: params.get('date') ?? '',
+          start_time: params.get('time') ?? '',
+        }
+      : BLANK_SCHEDULE,
+  )
   const [slugTouched, setSlugTouched] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -69,6 +85,8 @@ export default function PostEditor() {
             hours_tbd: p.hours_tbd,
             capacity: p.capacity != null ? String(p.capacity) : '',
             signup_open: p.signup_open,
+            color: isColorKey(p.color) ? p.color : null,
+            calendar_label: p.calendar_label ?? '',
           })
           setSchedule(fromPost(p))
           setSlugTouched(true)
@@ -116,6 +134,9 @@ export default function PostEditor() {
       hours_tbd: isEvent && form.hours_tbd,
       capacity: isEvent && form.capacity ? Number(form.capacity) : null,
       signup_open: isEvent ? form.signup_open : true,
+      // Colour is a calendar concern, so it travels with events only.
+      color: isEvent ? form.color : null,
+      calendar_label: isEvent ? form.calendar_label.trim() || null : null,
     }
 
     const { error } = isNew
@@ -329,6 +350,15 @@ export default function PostEditor() {
                 />
                 Sign-ups open
               </label>
+
+              <div className="border-t border-[var(--line)] pt-4">
+                <ColorPicker
+                  value={form.color}
+                  label={form.calendar_label}
+                  onChange={(color) => setForm({ ...form, color })}
+                  onLabel={(calendar_label) => setForm({ ...form, calendar_label })}
+                />
+              </div>
             </div>
           )}
 

@@ -64,6 +64,14 @@ export interface Post {
   hours_tbd: boolean
   capacity: number | null
   signup_open: boolean
+  /**
+   * One of the named palette colours in `lib/eventColors`. Null means the
+   * category's default. The calendar filters and legends on this, so it is
+   * an organising tool rather than decoration.
+   */
+  color: string | null
+  /** What the colour MEANS here — "Service", "Board meeting". Optional. */
+  calendar_label: string | null
   created_at: string
   updated_at: string
   author?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'title'> | null
