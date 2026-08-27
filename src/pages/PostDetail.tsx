@@ -25,6 +25,7 @@ import {
 } from '../lib/rsvp'
 import { renderBody } from '../lib/markdown'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
+import { colorLabel, colorOf } from '../lib/eventColors'
 
 export default function PostDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -179,6 +180,17 @@ export default function PostDetail() {
       <header className="mt-6">
         <div className="flex flex-wrap items-center gap-2">
           <CategoryBadge category={post.category} />
+          {/* The calendar colour, echoed here so an officer can confirm what
+              they set without going back to the grid to hunt for the chip. */}
+          {post.category === 'event' && (post.color || post.calendar_label) && (
+            <span
+              data-ec={colorOf(post)}
+              className="ec-soft inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+            >
+              <span className="ec-dot size-2 rounded-full" aria-hidden />
+              {post.calendar_label?.trim() || colorLabel(colorOf(post))}
+            </span>
+          )}
           {post.pinned && (
             <span className="text-[11px] font-semibold uppercase tracking-wide text-gold-500 dark:text-gold-300">
               📌 Pinned

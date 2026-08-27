@@ -160,6 +160,11 @@ export default function MonthView({
                 </button>
 
                 <div className="mt-0.5 hidden space-y-0.5 sm:block">
+                  {/* Two treatments, the way every calendar does it: an
+                      all-day event is a solid bar of its colour, a timed one
+                      is a solid dot beside plain text. A uniform pale tint
+                      for both made the colour almost impossible to read at
+                      chip size — which is the whole point of setting it. */}
                   {list.slice(0, 3).map((instance) => {
                     const status = statusOf(instance.event, instance.start, userId)
                     return (
@@ -174,19 +179,24 @@ export default function MonthView({
                         title={`${instance.event.title} — ${
                           instance.allDay ? 'time TBA' : shortTime(instance.start)
                         }`}
-                        className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition hover:brightness-95 ${
-                          instance.allDay ? 'ec-soft' : 'ec-soft'
-                        } ${status === 'past' ? 'ec-past' : ''} ${
-                          status === 'going' ? 'ec-going' : ''
-                        }`}
+                        className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition ${
+                          instance.allDay
+                            ? 'ec-solid hover:brightness-110'
+                            : 'hover:bg-[var(--surface)]'
+                        } ${status === 'past' ? 'ec-past' : ''}`}
                       >
+                        {!instance.allDay && (
+                          <span className="ec-dot size-1.5 shrink-0 rounded-full" aria-hidden />
+                        )}
                         {status === 'going' && <span aria-hidden>✓</span>}
                         {!instance.allDay && (
-                          <span className="shrink-0 tabular-nums opacity-70">
+                          <span className="shrink-0 tabular-nums muted">
                             {shortTime(instance.start)}
                           </span>
                         )}
-                        <span className="truncate">{instance.event.title}</span>
+                        <span className={`truncate ${instance.allDay ? '' : 'font-semibold'}`}>
+                          {instance.event.title}
+                        </span>
                       </button>
                     )
                   })}

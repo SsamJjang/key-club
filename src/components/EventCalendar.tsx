@@ -149,6 +149,19 @@ export default function EventCalendar({
 
   const byDay = useMemo(() => groupByDay(instances), [instances])
 
+  /**
+   * How much the filters are hiding right here.
+   *
+   * Filters persist between visits, so without this an officer who once
+   * clicked a colour comes back weeks later to a calendar that is quietly
+   * missing events — and reasonably concludes the events are broken rather
+   * than filtered.
+   */
+  const hidden = useMemo(
+    () => (filtersActive(filters) ? expand(events, from, to).length - instances.length : 0),
+    [events, from, to, instances, filters],
+  )
+
   /** Density dots in the mini month need the whole year, not this month. */
   const counts = useMemo(() => {
     const map = new Map<string, number>()
@@ -573,7 +586,24 @@ export default function EventCalendar({
 
         <div className="card overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-4 py-2 text-xs muted">
-            <span>{summary}</span>
+            <span>
+              {summary}
+              {hidden > 0 && (
+                <>
+                  {' · '}
+                  <span className="font-semibold text-gold-600 dark:text-gold-300">
+                    {hidden} hidden by filters
+                  </span>{' '}
+                  <button
+                    type="button"
+                    onClick={() => setFilters(BLANK_FILTERS)}
+                    className="no-print font-semibold text-navy-600 hover:underline dark:text-navy-200"
+                  >
+                    Show everything
+                  </button>
+                </>
+              )}
+            </span>
             <span className="no-print hidden sm:inline">
               Press <span className="kbd">?</span> for shortcuts
             </span>

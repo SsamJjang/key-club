@@ -144,10 +144,18 @@ export default function PostEditor() {
       : await supabase.from('posts').update(payload).eq('id', id!)
 
     if (error) {
+      // PGRST204 is "I don't know that column". For this form it almost
+      // always means a migration has not been run yet, and the raw message
+      // ("Could not find the 'color' column of 'posts'") sends people
+      // hunting through the app instead of the SQL editor.
+      const missing = error.code === 'PGRST204' && /color|calendar_label/.test(error.message)
+
       setError(
         error.code === '23505'
           ? 'That slug is already taken — pick a different one.'
-          : error.message,
+          : missing
+            ? 'The database is missing the event-colour columns. Run supabase/006_event_colors.sql in the Supabase SQL editor, then reload this page. (If you just ran it, run NOTIFY pgrst, \'reload schema\'; too — the API caches the schema.)'
+            : error.message,
       )
       setSaving(false)
       return
