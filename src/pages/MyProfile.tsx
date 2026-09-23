@@ -224,6 +224,7 @@ export default function MyProfile() {
             bucket="avatars"
             folder={profile.id}
             label="Profile photo"
+            shape="square"
             value={form.avatar_url}
             onChange={(url) => setForm({ ...form, avatar_url: url })}
             hint="Square images look best. Save to apply."

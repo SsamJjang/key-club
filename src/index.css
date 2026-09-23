@@ -219,8 +219,33 @@ html.dark {
     padding: 0;
   }
   .prose-club img {
+    display: block;
     max-width: 100%;
-    border-radius: 0.75rem;
+    max-height: min(32rem, 75vh);
+    width: auto;
+    height: auto;
+    margin: 1.75rem auto;
+    border-radius: 1rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: 0 8px 24px -12px rgb(8 21 42 / 0.35);
+  }
+  /* Two or more images in one paragraph sit side by side as a strip. */
+  .prose-club p:has(> img + img) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+  .prose-club img.ProseMirror-selectednode {
+    outline: 3px solid var(--color-navy-400);
+    outline-offset: 2px;
+  }
+  .prose-club p:has(> img + img) > img {
+    flex: 1 1 14rem;
+    max-height: 20rem;
+    object-fit: cover;
+    margin: 0;
   }
   .prose-club table {
     width: 100%;

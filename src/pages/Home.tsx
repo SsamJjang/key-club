@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
 import { formatDateTime, gradeLabel } from '../lib/format'
 import PostCard from '../components/PostCard'
+import CoverImage from '../components/CoverImage'
 import { CategoryBadge, EmptyState, Notice, Spinner, Stat } from '../components/ui'
 
 const POST_SELECT = '*, author:profiles!author_id(id, full_name, avatar_url, title)'
@@ -129,8 +130,8 @@ export default function Home() {
             to={`/post/${pinned.slug}`}
             className="card group block overflow-hidden border-gold-300 transition hover:border-gold-400 dark:border-gold-600/50"
           >
-            <div className="grid md:grid-cols-[1.4fr_1fr]">
-              <div className="p-7">
+            <div className="grid md:grid-cols-[1.25fr_1fr]">
+              <div className="order-2 flex flex-col p-7 md:order-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-gold-500 dark:text-gold-300">
                     📌 Pinned
@@ -146,15 +147,16 @@ export default function Home() {
                     🗓️ {formatDateTime(pinned.starts_at)}
                   </p>
                 )}
-                <span className="mt-6 inline-block text-sm font-semibold text-navy-600 group-hover:underline dark:text-navy-200">
+                <span className="mt-6 inline-block text-sm font-semibold text-navy-600 group-hover:underline md:mt-auto md:pt-6 dark:text-navy-200">
                   Read more →
                 </span>
               </div>
               {pinned.cover_url && (
-                <img
+                <CoverImage
                   src={pinned.cover_url}
-                  alt=""
-                  className="h-full max-h-64 w-full object-cover md:max-h-none"
+                  ratio={4 / 3}
+                  eager
+                  className="order-1 aspect-[16/9] w-full md:order-2 md:aspect-auto md:h-full md:min-h-64 md:border-l md:border-[var(--line)]"
                 />
               )}
             </div>

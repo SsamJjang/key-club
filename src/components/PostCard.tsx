@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Post } from '../lib/types'
 import { formatOccurrence, nextOccurrence, occurrences, relative } from '../lib/format'
 import { Avatar, CategoryBadge } from './ui'
+import CoverImage from './CoverImage'
 
 export default function PostCard({ post, compact = false }: { post: Post; compact?: boolean }) {
   const isEvent = post.category === 'event'
@@ -12,11 +13,9 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
     <article className="card group overflow-hidden transition hover:border-navy-300 dark:hover:border-navy-600">
       <Link to={`/post/${post.slug}`} className="block">
         {post.cover_url && !compact && (
-          <img
+          <CoverImage
             src={post.cover_url}
-            alt=""
-            loading="lazy"
-            className="h-44 w-full object-cover transition group-hover:opacity-95"
+            className="aspect-[16/9] w-full border-b border-[var(--line)] transition group-hover:brightness-105"
           />
         )}
         <div className="p-5">

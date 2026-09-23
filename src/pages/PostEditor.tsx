@@ -288,7 +288,7 @@ export default function PostEditor() {
               label="Cover image"
               value={form.cover_url}
               onChange={(url) => setForm({ ...form, cover_url: url })}
-              hint="Shown on cards and at the top of the article."
+              hint="Shown on cards and at the top of the page. Photos fill the frame; logos and odd shapes are shown whole."
             />
           </div>
 

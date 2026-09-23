@@ -24,6 +24,7 @@ import {
   removeSignup,
 } from '../lib/rsvp'
 import { renderBody } from '../lib/markdown'
+import CoverImage from '../components/CoverImage'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
 import { colorLabel, colorOf } from '../lib/eventColors'
 
@@ -230,7 +231,12 @@ export default function PostDetail() {
       </header>
 
       {post.cover_url && (
-        <img src={post.cover_url} alt="" className="mt-8 w-full rounded-2xl object-cover" />
+        <CoverImage
+          src={post.cover_url}
+          ratio={2}
+          eager
+          className="mt-8 aspect-[16/10] w-full rounded-2xl border border-[var(--line)] shadow-sm sm:aspect-[2/1]"
+        />
       )}
 
       {isEvent && (
