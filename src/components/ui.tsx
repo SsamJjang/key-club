@@ -160,3 +160,35 @@ export function Stat({ value, label }: { value: ReactNode; label: string }) {
     </div>
   )
 }
+
+/** Where a member stands on this semester's fundraiser requirement. */
+export function FundraiserStatus({
+  standing,
+}: {
+  standing: { semester: string; semester_count: number; required: number; requirement_met: boolean } | null
+}) {
+  if (!standing) return null
+  const met = standing.requirement_met
+  return (
+    <div className="card flex items-center justify-between gap-3 px-4 py-3">
+      <div>
+        <div className="font-[family-name:var(--font-display)] text-2xl font-semibold">
+          {standing.semester_count}
+          <span className="text-sm font-normal muted"> / {standing.required}</span>
+        </div>
+        <div className="mt-0.5 text-xs uppercase tracking-wide muted">
+          Fundraisers · {standing.semester}
+        </div>
+      </div>
+      <span
+        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+          met
+            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
+            : 'bg-gold-100 text-gold-600 dark:bg-gold-600/25 dark:text-gold-200'
+        }`}
+      >
+        {met ? 'Done' : 'Needed'}
+      </span>
+    </div>
+  )
+}

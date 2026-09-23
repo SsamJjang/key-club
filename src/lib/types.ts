@@ -115,6 +115,31 @@ export interface MemberHours {
   pending_hours: number
 }
 
+export interface FundraiserEntry {
+  id: string
+  user_id: string
+  post_id: string | null
+  activity: string
+  participated_on: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
+  post?: Pick<Post, 'id' | 'slug' | 'title'> | null
+}
+
+/** One member's standing against the per-semester fundraiser requirement. */
+export interface MemberFundraisers {
+  user_id: string
+  /** "Fall 2026", "Spring 2027" — the window being measured. */
+  semester: string
+  semester_count: number
+  total_count: number
+  last_participated_on: string | null
+  required: number
+  requirement_met: boolean
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   member: 'Member',
   officer: 'Officer',
@@ -136,6 +161,11 @@ export interface ClubSettings {
   club_name: string
   school_year: string
   hours_goal: number
+  /** Current school year's semester boundaries, 'YYYY-MM-DD'. */
+  fall_semester_start: string
+  spring_semester_start: string
+  /** Fundraiser activities each member must join per semester. */
+  fundraisers_required: number
   email_from: string
   email_reply_to: string | null
   weekly_email_enabled: boolean

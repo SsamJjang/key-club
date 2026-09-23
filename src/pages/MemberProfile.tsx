@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { BoardPosition, MemberHours, Post, Profile } from '../lib/types'
+import type { BoardPosition, MemberFundraisers, MemberHours, Post, Profile } from '../lib/types'
 import { formatDate, formatPhone, gradeLabel } from '../lib/format'
-import { Avatar, BoardBadge, EmptyState, RoleBadge, Spinner, Stat } from '../components/ui'
+import {
+  Avatar,
+  BoardBadge,
+  EmptyState,
+  FundraiserStatus,
+  RoleBadge,
+  Spinner,
+  Stat,
+} from '../components/ui'
 
 export default function MemberProfile() {
   const { id } = useParams<{ id: string }>()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [hours, setHours] = useState<MemberHours | null>(null)
+  const [fundraisers, setFundraisers] = useState<MemberFundraisers | null>(null)
   const [events, setEvents] = useState<Post[]>([])
   const [board, setBoard] = useState<BoardPosition | null>(null)
   const [loading, setLoading] = useState(true)
@@ -22,7 +31,8 @@ export default function MemberProfile() {
       supabase.from('member_hours').select('*').eq('user_id', id).maybeSingle(),
       supabase.from('event_signups').select('post:posts!post_id(*)').eq('user_id', id),
       supabase.from('board_positions').select('*'),
-    ]).then(([p, h, s, b]) => {
+      supabase.from('member_fundraisers').select('*').eq('user_id', id).maybeSingle(),
+    ]).then(([p, h, s, b, f]) => {
       if (cancelled) return
       const found = p.data as Profile | null
       setProfile(found)
@@ -30,6 +40,7 @@ export default function MemberProfile() {
         ((b.data as BoardPosition[]) ?? []).find((x) => x.id === found?.board_position) ?? null,
       )
       setHours(h.data as MemberHours | null)
+      setFundraisers(f.data as MemberFundraisers | null)
       setEvents(
         ((s.data as { post: Post | null }[] | null) ?? [])
           .map((row) => row.post)
@@ -83,6 +94,10 @@ export default function MemberProfile() {
         <Stat value={events.length} label="Events joined" />
         <Stat value={gradeLabel(profile.grade) ?? '—'} label="Grade" />
         <Stat value={profile.graduation_year ?? '—'} label="Grad year" />
+      </div>
+
+      <div className="mt-3">
+        <FundraiserStatus standing={fundraisers} />
       </div>
 
       <section className="card mt-8 p-6">

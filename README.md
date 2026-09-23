@@ -461,6 +461,48 @@ typing in a field.
 
 ---
 
+## Update 007 — the fundraiser requirement
+
+Run [`supabase/007_fundraisers.sql`](supabase/007_fundraisers.sql). Safe to
+re-run.
+
+On top of the yearly hours goal, every member must take part in **at least one
+fundraiser activity each semester**. Fundraising isn't service, so it doesn't
+go in `hours_log` — it has its own table, `fundraiser_log`, officer-entered the
+same way hours are.
+
+**Semesters.** Admin → Settings → *Fundraiser requirement* holds two dates for
+the current school year — **Fall starts** and **Spring starts** — plus how many
+fundraisers each member needs per semester (default 1). Fall runs up to the day
+spring starts. Update both dates when you change the school year, next to
+`school_year`. The migration defaults them to 2026-08-01 and 2027-01-01; set the
+real ones.
+
+**The attribute.** `member_fundraisers` is a view with one row per member:
+`semester` ("Fall 2026"), `semester_count`, `total_count`,
+`last_participated_on`, and `requirement_met`. It's computed from the records,
+so nothing needs resetting when the semester turns — the new window simply
+starts at zero. Like `member_hours`, the individual rows are private to the
+member and officers, and the standing is visible to the club.
+
+**Where it shows up.**
+
+- **My hours** — a fundraiser card for this semester (Done / Still needed) and
+  the list of fundraisers you've been recorded for.
+- **Profiles** — your own and other members' profiles show this semester's
+  count and status.
+- **Admin → Fundraisers** — record participation for many members at once (pick
+  an event to pre-select its sign-ups), filter to members who still need one,
+  and see the outstanding list for the semester.
+- **Weekly email** — each member's email now has a fundraiser box and a
+  reminder line. `weekly_hours_digest` gained `semester`,
+  `fundraisers_this_semester`, `fundraisers_required`, and
+  `fundraiser_requirement_met`. Paste the updated
+  [`WeeklyHoursEmail.gs`](google-apps-script/WeeklyHoursEmail.gs) over the old
+  one in Apps Script; nothing else about the trigger changes.
+
+---
+
 ## Deploying
 
 The build is static files in `dist/`. Routing is hash-based, so deep links work

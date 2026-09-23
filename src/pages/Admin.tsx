@@ -6,8 +6,9 @@ import { formatDate } from '../lib/format'
 import { CategoryBadge, EmptyState, Notice, PageHeader, Spinner, Stat } from '../components/ui'
 import MembersTab from '../components/admin/MembersTab'
 import HoursTab from '../components/admin/HoursTab'
+import FundraisersTab from '../components/admin/FundraisersTab'
 
-type Tab = 'posts' | 'hours' | 'members' | 'settings'
+type Tab = 'posts' | 'hours' | 'fundraisers' | 'members' | 'settings'
 
 function SettingsTab() {
   const [settings, setSettings] = useState<ClubSettings | null>(null)
@@ -34,6 +35,9 @@ function SettingsTab() {
         club_name: settings.club_name,
         school_year: settings.school_year,
         hours_goal: Number(settings.hours_goal),
+        fall_semester_start: settings.fall_semester_start,
+        spring_semester_start: settings.spring_semester_start,
+        fundraisers_required: Number(settings.fundraisers_required),
         email_from: settings.email_from,
         email_reply_to: settings.email_reply_to || null,
         weekly_email_enabled: settings.weekly_email_enabled,
@@ -95,11 +99,57 @@ function SettingsTab() {
 
       <div className="border-t border-[var(--line)] pt-5">
         <h3 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+          Fundraiser requirement
+        </h3>
+        <p className="mt-1 text-sm muted">
+          Each member must join this many fundraiser activities per semester. Fall runs from its
+          start date up to the day spring starts; update both dates when you change the school
+          year.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div>
+            <label className="label">Per semester</label>
+            <input
+              type="number"
+              min="0"
+              max="20"
+              className="field"
+              value={settings.fundraisers_required}
+              onChange={(e) =>
+                setSettings({ ...settings, fundraisers_required: Number(e.target.value) })
+              }
+            />
+          </div>
+          <div>
+            <label className="label">Fall starts</label>
+            <input
+              type="date"
+              required
+              className="field"
+              value={settings.fall_semester_start}
+              onChange={(e) => setSettings({ ...settings, fall_semester_start: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">Spring starts</label>
+            <input
+              type="date"
+              required
+              className="field"
+              value={settings.spring_semester_start}
+              onChange={(e) => setSettings({ ...settings, spring_semester_start: e.target.value })}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--line)] pt-5">
+        <h3 className="font-[family-name:var(--font-display)] text-lg font-semibold">
           Weekly email
         </h3>
         <p className="mt-1 text-sm muted">
           Sends every Sunday at 9:00 PM (Asia/Seoul) to every active member, with their hours
-          against the goal. Delivered by the Key Club Apps Script — if it stops arriving, check
+          against the goal and whether they’ve done a fundraiser this semester. Delivered by the Key Club Apps Script — if it stops arriving, check
           its Executions log at script.google.com.
         </p>
 
@@ -271,6 +321,7 @@ export default function Admin() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'posts', label: 'Posts' },
     { key: 'hours', label: 'Hours' },
+    { key: 'fundraisers', label: 'Fundraisers' },
     { key: 'members', label: 'Members' },
     { key: 'settings', label: 'Settings' },
   ]
@@ -280,7 +331,7 @@ export default function Admin() {
       <PageHeader
         eyebrow="Officers only"
         title="Admin"
-        subtitle="Write the news, log service hours, manage the roster."
+        subtitle="Write the news, log service hours and fundraisers, manage the roster."
         action={
           <Link to="/admin/posts/new" className="btn btn-primary">
             + New post
@@ -312,6 +363,7 @@ export default function Admin() {
 
       {tab === 'posts' && <PostsTab />}
       {tab === 'hours' && <HoursTab />}
+      {tab === 'fundraisers' && <FundraisersTab />}
       {tab === 'members' && <MembersTab />}
       {tab === 'settings' && <SettingsTab />}
     </div>

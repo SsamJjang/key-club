@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { ClubSettings, HoursEntry } from '../lib/types'
+import type { ClubSettings, FundraiserEntry, HoursEntry, MemberFundraisers } from '../lib/types'
 import { formatDate } from '../lib/format'
 import { EmptyState, Notice, PageHeader, Spinner, Stat } from '../components/ui'
 
 /**
- * Read-only for members: officers enter hours, so there is nothing to submit
- * here. This is the record and the progress bar.
+ * Read-only for members: officers enter hours and fundraisers, so there is
+ * nothing to submit here. This is the record and the progress toward both
+ * requirements — the yearly hours goal and a fundraiser each semester.
  */
 export default function Hours() {
   const { profile } = useAuth()
   const [entries, setEntries] = useState<HoursEntry[]>([])
   const [settings, setSettings] = useState<ClubSettings | null>(null)
+  const [fundraisers, setFundraisers] = useState<FundraiserEntry[]>([])
+  const [standing, setStanding] = useState<MemberFundraisers | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -26,10 +29,18 @@ export default function Hours() {
         .eq('user_id', profile.id)
         .order('served_on', { ascending: false }),
       supabase.from('club_settings').select('*').single(),
-    ]).then(([logRes, settingsRes]) => {
+      supabase
+        .from('fundraiser_log')
+        .select('*, post:posts!post_id(id, slug, title)')
+        .eq('user_id', profile.id)
+        .order('participated_on', { ascending: false }),
+      supabase.from('member_fundraisers').select('*').eq('user_id', profile.id).maybeSingle(),
+    ]).then(([logRes, settingsRes, fundRes, standingRes]) => {
       if (cancelled) return
       setEntries((logRes.data as HoursEntry[]) ?? [])
       setSettings(settingsRes.data as ClubSettings | null)
+      setFundraisers((fundRes.data as FundraiserEntry[]) ?? [])
+      setStanding(standingRes.data as MemberFundraisers | null)
       setLoading(false)
     })
 
@@ -47,12 +58,17 @@ export default function Hours() {
   const pct = goal > 0 ? Math.min(100, Math.round((approved / goal) * 100)) : 0
   const remaining = Math.max(0, goal - approved)
 
+  const required = Number(standing?.required ?? settings?.fundraisers_required ?? 1)
+  const thisSemester = Number(standing?.semester_count ?? 0)
+  const fundraiserMet = standing?.requirement_met ?? required === 0
+  const semester = standing?.semester ?? 'this semester'
+
   return (
     <div className="rise">
       <PageHeader
         eyebrow="Service"
         title="My hours"
-        subtitle="Every hour an officer has recorded for you this year."
+        subtitle="Every hour and fundraiser an officer has recorded for you this year."
       />
 
       <section className="card mb-8 p-6">
@@ -90,17 +106,73 @@ export default function Hours() {
         </p>
       </section>
 
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <Stat value={entries.length} label="Entries" />
+      <section className="card mb-8 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="label mb-1">Fundraiser · {semester}</h2>
+            <p className="font-[family-name:var(--font-display)] text-2xl font-semibold">
+              {thisSemester} <span className="text-base font-normal muted">/ {required}</span>
+            </p>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+              fundraiserMet
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
+                : 'bg-gold-100 text-gold-600 dark:bg-gold-600/25 dark:text-gold-200'
+            }`}
+          >
+            {fundraiserMet ? 'Done' : 'Still needed'}
+          </span>
+        </div>
+        <p className="mt-3 text-sm muted">
+          {fundraiserMet
+            ? `You’ve met the fundraiser requirement for ${semester}.`
+            : `Every member takes part in at least ${required} fundraiser activit${
+                required === 1 ? 'y' : 'ies'
+              } each semester, on top of service hours. ${
+                required - thisSemester
+              } to go for ${semester}.`}
+        </p>
+      </section>
+
+      <div className="mb-6 grid grid-cols-3 gap-3">
+        <Stat value={entries.length} label="Hour entries" />
         <Stat value={goal} label="Yearly goal" />
+        <Stat value={fundraisers.length} label="Fundraisers" />
       </div>
 
       <div className="mb-6">
         <Notice>
-          Officers record hours after each event — there is nothing to submit here. If something
-          looks wrong or missing, tell an officer within two weeks of the event.
+          Officers record hours and fundraisers after each event — there is nothing to submit
+          here. If something looks wrong or missing, tell an officer within two weeks of the event.
         </Notice>
       </div>
+
+      {fundraisers.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-semibold">
+            Fundraisers
+          </h2>
+          <ul className="space-y-3">
+            {fundraisers.map((f) => (
+              <li key={f.id} className="card p-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-medium">{f.activity}</span>
+                  <span className="ml-auto text-sm muted">{formatDate(f.participated_on)}</span>
+                </div>
+                {f.post && <p className="mt-1 text-xs muted">Event: {f.post.title}</p>}
+                {f.note && <p className="mt-2 text-xs italic muted">Officer note: {f.note}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {fundraisers.length > 0 && entries.length > 0 && (
+        <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-semibold">
+          Service hours
+        </h2>
+      )}
 
       {entries.length === 0 ? (
         <EmptyState icon="⏱️" title="No hours recorded yet">

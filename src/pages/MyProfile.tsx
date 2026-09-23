@@ -2,9 +2,18 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { BoardPosition, MemberHours, Post } from '../lib/types'
+import type { BoardPosition, MemberFundraisers, MemberHours, Post } from '../lib/types'
 import { formatDate, gradeLabel } from '../lib/format'
-import { Avatar, BoardBadge, Notice, PageHeader, RoleBadge, Spinner, Stat } from '../components/ui'
+import {
+  Avatar,
+  BoardBadge,
+  FundraiserStatus,
+  Notice,
+  PageHeader,
+  RoleBadge,
+  Spinner,
+  Stat,
+} from '../components/ui'
 import ImageUpload from '../components/ImageUpload'
 import { useTheme } from '../lib/theme'
 
@@ -13,6 +22,7 @@ export default function MyProfile() {
   const { dark, setDark } = useTheme()
   const [form, setForm] = useState({ phone: '', pronouns: '', bio: '', avatar_url: '' })
   const [hours, setHours] = useState<MemberHours | null>(null)
+  const [fundraisers, setFundraisers] = useState<MemberFundraisers | null>(null)
   const [rsvps, setRsvps] = useState<Post[]>([])
   const [board, setBoard] = useState<BoardPosition | null>(null)
   const [saving, setSaving] = useState(false)
@@ -36,9 +46,11 @@ export default function MyProfile() {
         .select('post:posts!post_id(*)')
         .eq('user_id', profile.id),
       supabase.from('board_positions').select('*'),
-    ]).then(([h, s, b]) => {
+      supabase.from('member_fundraisers').select('*').eq('user_id', profile.id).maybeSingle(),
+    ]).then(([h, s, b, f]) => {
       if (cancelled) return
       setHours(h.data as MemberHours | null)
+      setFundraisers(f.data as MemberFundraisers | null)
       setBoard(
         ((b.data as BoardPosition[]) ?? []).find((x) => x.id === profile.board_position) ?? null,
       )
@@ -129,6 +141,8 @@ export default function MyProfile() {
             <Stat value={Number(hours?.approved_hours ?? 0).toFixed(1)} label="Approved hrs" />
             <Stat value={Number(hours?.pending_hours ?? 0).toFixed(1)} label="Pending hrs" />
           </div>
+
+          <FundraiserStatus standing={fundraisers} />
 
           <section className="card p-6">
             <h2 className="label">Appearance</h2>

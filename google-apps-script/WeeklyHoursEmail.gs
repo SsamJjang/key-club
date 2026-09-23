@@ -102,7 +102,15 @@ function run(opts) {
   if (opts.dryRun) {
     Logger.log('DRY RUN — %s recipient(s), nothing sent:', rows.length);
     rows.forEach(function (r) {
-      Logger.log('  %s <%s> — %s hrs', r.full_name, r.email, Number(r.approved_hours));
+      Logger.log(
+        '  %s <%s> — %s hrs, %s/%s fundraiser(s) %s',
+        r.full_name,
+        r.email,
+        Number(r.approved_hours),
+        Number(r.fundraisers_this_semester) || 0,
+        Number(r.fundraisers_required),
+        r.semester
+      );
     });
     return;
   }
@@ -183,6 +191,14 @@ function buildEmail_(row, settings) {
   var done = remaining === 0;
   var firstName = String(row.full_name).split(/\s+/)[0];
 
+  // Fundraiser requirement: at least N activities per semester, on top of hours.
+  var semester = row.semester || 'this semester';
+  var fundRequired = Number(row.fundraisers_required);
+  if (isNaN(fundRequired)) fundRequired = 1;
+  var fundCount = Number(row.fundraisers_this_semester) || 0;
+  var fundMet = row.fundraiser_requirement_met === true;
+  var fundLeft = Math.max(0, fundRequired - fundCount);
+
   var subject =
     settings.club_name + ' Hours Update — ' + hours + '/' + goal + ' hrs (' + pct + '%)';
 
@@ -221,11 +237,25 @@ function buildEmail_(row, settings) {
       ? 'Last recorded service: ' + escapeHtml_(row.last_served_on)
       : 'No service hours recorded yet this year.') +
     '</p>' +
+    '<div style="margin-top:20px;background:#ffffff;border:1px solid #e2e6ed;border-radius:14px;' +
+    'padding:16px 22px;">' +
+    '<div style="font-size:13px;color:#52607a;text-transform:uppercase;letter-spacing:0.04em;">' +
+    'Fundraiser · ' + escapeHtml_(semester) + '</div>' +
+    '<div style="margin-top:6px;font-size:15px;">' +
+    (fundMet
+      ? '<span style="color:#1a9c6b;font-weight:600;">✓ Done</span> — you’ve joined ' + fundCount +
+        ' fundraiser' + (fundCount === 1 ? '' : 's') + ' this semester.'
+      : '<span style="color:#b7811a;font-weight:600;">Still needed</span> — join <strong>' +
+        fundLeft + ' more fundraiser activit' + (fundLeft === 1 ? 'y' : 'ies') +
+        '</strong> before the semester ends.') +
+    '</div></div>' +
     cta +
     '<h2 style="margin:28px 0 8px;font-size:16px;">Reminders</h2>' +
     '<ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.7;">' +
     '<li>Hours are entered by officers — tell an officer within <strong>2 weeks</strong> of an event, or they may not be counted.</li>' +
     '<li>You must fulfill <strong>' + goal + ' hours</strong> of volunteer service per year to remain an active member.</li>' +
+    '<li>You must also take part in at least <strong>' + fundRequired + ' fundraiser activit' +
+    (fundRequired === 1 ? 'y' : 'ies') + '</strong> every semester.</li>' +
     '<li>If a number looks wrong, reach out to an officer.</li>' +
     '</ul>' +
     '<hr style="margin:28px 0 12px;border:none;border-top:1px solid #e2e6ed;" />' +
@@ -240,9 +270,14 @@ function buildEmail_(row, settings) {
     (done
       ? "You've hit the " + goal + '-hour goal. Thank you!'
       : 'You have ' + remaining + ' hour(s) left to reach the ' + goal + '-hour goal.') +
+    '\n\nFundraiser (' + semester + '): ' +
+    (fundMet
+      ? 'done — ' + fundCount + ' this semester.'
+      : 'still needed — ' + fundLeft + ' more before the semester ends.') +
     '\n\nReminders:\n' +
     '- Hours are entered by officers. Tell an officer within 2 weeks of an event.\n' +
     '- ' + goal + ' hours of service per year are required to remain an active member.\n' +
+    '- At least ' + fundRequired + ' fundraiser activity(ies) per semester are required.\n' +
     '- If a number looks wrong, reach out to an officer.\n' +
     (settings.site_url ? '\n' + settings.site_url + '\n' : '');
 
