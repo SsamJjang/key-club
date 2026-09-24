@@ -145,7 +145,7 @@ function Tile({
         style={{ borderRadius: inner, aspectRatio: aspect ? String(aspect) : undefined }}
         aria-label={img.alt || caption || 'Open photo'}
       >
-        <Photo img={img} sizes={sizes} fit={fit} eager={eager} className="kc-zoom" />
+        <Photo img={img} sizes={sizes} fit={fit} eager={eager} />
         {overlay && (
           <figcaption
             className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-3 pb-2.5 pt-8 text-[13px] leading-snug text-white transition ${

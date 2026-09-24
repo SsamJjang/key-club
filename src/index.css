@@ -429,10 +429,6 @@ html.dark {
   .kc-gallery figcaption { margin: 0; }
   .kc-tile-hit { border: 0; padding: 0; background: none; }
   .kc-tile-hit:focus-visible { outline-offset: 3px; }
-  .kc-zoom img { transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.5s ease; }
-  @media (hover: hover) {
-    .kc-tile-hit:hover .kc-zoom img:last-child { transform: scale(1.04); }
-  }
   .kc-framed {
     background: var(--card);
     padding: 4px;
@@ -682,8 +678,6 @@ html.dark {
 
 @media (prefers-reduced-motion: reduce) {
   .kc-fade { animation: none; }
-  .kc-zoom img { transition: opacity 0.2s ease; }
-  .kc-tile-hit:hover .kc-zoom img:last-child { transform: none; }
 }
 
 @keyframes rise {

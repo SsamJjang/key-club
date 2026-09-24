@@ -314,7 +314,6 @@ function GalleryView({ node, editor, getPos, updateAttributes, deleteNode }: Rea
   return (
     <NodeViewWrapper
       className="kc-gallery-editor not-prose"
-      data-drag-handle=""
       contentEditable={false}
       onDragOver={(e: React.DragEvent) => {
         if (e.dataTransfer.types.includes('Files')) {
@@ -659,6 +658,7 @@ function GalleryView({ node, editor, getPos, updateAttributes, deleteNode }: Rea
                 onDragStart={(e) => {
                   setDragIndex(i)
                   e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setDragImage(e.currentTarget, e.currentTarget.offsetWidth / 2, e.currentTarget.offsetHeight / 2)
                   e.dataTransfer.setData('text/x-kc-tile', String(i))
                 }}
                 onDragOver={(e) => {

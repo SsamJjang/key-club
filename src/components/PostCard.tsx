@@ -36,7 +36,7 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
                     alt=""
                     loading="lazy"
                     decoding="async"
-                    className={`size-full object-cover transition duration-500 group-hover:scale-[1.03] ${
+                    className={`size-full object-cover ${
                       photos.length >= 3 && i === 0 ? 'row-span-2' : ''
                     }`}
                   />
