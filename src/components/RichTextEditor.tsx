@@ -3,11 +3,11 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
-import Image from '@tiptap/extension-image'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
-import { supabase } from '../lib/supabase'
+import { FigureNode, GalleryNode, insertImages } from './media/editorNodes'
+import { imageFilesFrom } from '../lib/images'
 
 /**
  * Word-processor style editor for post bodies. Stores HTML, which is
@@ -53,6 +53,7 @@ function Divider() {
 
 function Toolbar({ editor }: { editor: Editor }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
 
   const addLink = useCallback(() => {
     const previous = editor.getAttributes('link').href as string | undefined
@@ -64,28 +65,6 @@ function Toolbar({ editor }: { editor: Editor }) {
     }
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }, [editor])
-
-  const uploadImage = useCallback(
-    async (file: File) => {
-      if (file.size > 5 * 1024 * 1024) {
-        window.alert('That image is larger than 5 MB.')
-        return
-      }
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const path = `body/${crypto.randomUUID()}.${ext}`
-
-      const { error } = await supabase.storage.from('post-images').upload(path, file, {
-        cacheControl: '31536000',
-      })
-      if (error) {
-        window.alert(`Upload failed: ${error.message}`)
-        return
-      }
-      const { data } = supabase.storage.from('post-images').getPublicUrl(path)
-      editor.chain().focus().setImage({ src: data.publicUrl, alt: file.name }).run()
-    },
-    [editor],
-  )
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-[var(--line)] p-2">
@@ -193,8 +172,16 @@ function Toolbar({ editor }: { editor: Editor }) {
       <ToolbarButton title="Add link" active={editor.isActive('link')} onClick={addLink}>
         🔗
       </ToolbarButton>
-      <ToolbarButton title="Insert image" onClick={() => fileRef.current?.click()}>
+      <ToolbarButton title="Insert photo — pick several to make a gallery" onClick={() => fileRef.current?.click()}>
         🖼️
+      </ToolbarButton>
+      <ToolbarButton title="Insert photo gallery — grids, collages, carousels…" onClick={() => galleryRef.current?.click()}>
+        <svg viewBox="0 0 20 20" className="size-4 fill-current" aria-hidden>
+          <rect x="1" y="1" width="8" height="8" rx="1.5" />
+          <rect x="11" y="1" width="8" height="5" rx="1.5" />
+          <rect x="11" y="8" width="8" height="11" rx="1.5" />
+          <rect x="1" y="11" width="8" height="8" rx="1.5" />
+        </svg>
       </ToolbarButton>
       <ToolbarButton
         title="Horizontal line"
@@ -229,11 +216,22 @@ function Toolbar({ editor }: { editor: Editor }) {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) void uploadImage(file)
+          insertImages(editor, Array.from(e.target.files ?? []))
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept="image/*,.heic,.heif"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          insertImages(editor, Array.from(e.target.files ?? []), { gallery: true })
           e.target.value = ''
         }}
       />
@@ -250,6 +248,9 @@ export default function RichTextEditor({
   onChange: (html: string) => void
   placeholder?: string
 }) {
+  // editorProps are fixed at creation; they reach the live editor via this.
+  const editorRef = useRef<Editor | null>(null)
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -257,7 +258,8 @@ export default function RichTextEditor({
       Placeholder.configure({ placeholder }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false, autolink: true }),
-      Image.configure({ inline: false }),
+      FigureNode,
+      GalleryNode,
     ],
     content: value,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -265,11 +267,30 @@ export default function RichTextEditor({
       attributes: {
         class: 'prose-club min-h-80 px-4 py-3 focus:outline-none',
       },
+      // Photos pasted or dropped anywhere in the text become a photo (one)
+      // or a gallery (several) right there.
+      handlePaste: (_view, event) => {
+        const files = imageFilesFrom(event.clipboardData)
+        if (!files.length || !editorRef.current) return false
+        event.preventDefault()
+        insertImages(editorRef.current, files)
+        return true
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false
+        const files = imageFilesFrom(event.dataTransfer)
+        if (!files.length || !editorRef.current) return false
+        event.preventDefault()
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        insertImages(editorRef.current, files, { at })
+        return true
+      },
     },
     // The editor owns its own DOM; React must not try to render it during SSR.
     immediatelyRender: false,
   })
 
+  editorRef.current = editor
   if (!editor) return null
 
   return (

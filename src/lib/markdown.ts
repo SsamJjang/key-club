@@ -6,10 +6,17 @@ marked.setOptions({ gfm: true, breaks: true })
 const ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'p', 'br', 'hr', 'strong', 'b', 'em', 'i', 'u', 's',
   'del', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'img', 'table',
-  'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div',
+  'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div', 'figure', 'figcaption',
 ]
 
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'target', 'rel', 'style', 'class']
+const ALLOWED_ATTR = [
+  'href', 'src', 'alt', 'title', 'target', 'rel', 'style', 'class',
+  'width', 'height', 'loading', 'decoding',
+  // Photo blocks: gallery JSON (re-validated in lib/gallery.ts before use),
+  // figure alignment, and the full-size copy behind a thumbnail.
+  'data-kc-gallery', 'data-kc-figure', 'data-align', 'data-full', 'data-lqip',
+  'data-color', 'data-pending',
+]
 
 /**
  * Post bodies are HTML from the editor. Posts written before the editor
@@ -30,6 +37,7 @@ export function renderBody(body: string): string {
     // style is allowed for the editor's text-align only; strip anything that
     // could reposition or hide elements over the rest of the page.
     FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+    ALLOW_DATA_ATTR: false,
   })
 }
 

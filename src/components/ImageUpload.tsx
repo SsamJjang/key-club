@@ -1,12 +1,18 @@
 import { useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { readableError, uploadImage, isImageFile, type UploadStage } from '../lib/images'
+import { splitFocus, withFocus } from '../lib/gallery'
 import CoverImage from './CoverImage'
+import FocusPicker from './media/FocusPicker'
 
-const MAX_BYTES = 5 * 1024 * 1024
+const STAGE_LABEL: Partial<Record<UploadStage, string>> = {
+  processing: 'Straightening & shrinking…',
+  uploading: 'Uploading…',
+}
 
 /**
  * Uploads to a public Supabase Storage bucket and hands back the public URL.
- * Used for post covers, inline post images, and member avatars.
+ * Used for post covers and member avatars. Any size in: the photo is fixed
+ * up and compressed in the browser first (see lib/images.ts).
  */
 export default function ImageUpload({
   bucket,
@@ -27,53 +33,56 @@ export default function ImageUpload({
   shape?: 'wide' | 'square'
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState<UploadStage | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [showUrl, setShowUrl] = useState(false)
+  const [showFocus, setShowFocus] = useState(false)
+  const square = shape === 'square'
+  const busy = preview !== null
+  const { src, fx, fy } = splitFocus(value)
 
   async function upload(file: File) {
     setError(null)
-
-    if (!file.type.startsWith('image/')) {
+    if (!isImageFile(file)) {
       setError('That file is not an image.')
       return
     }
-    if (file.size > MAX_BYTES) {
-      setError(`That image is ${(file.size / 1e6).toFixed(1)} MB — the limit is 5 MB.`)
-      return
+    const local = URL.createObjectURL(file)
+    setPreview(local)
+    try {
+      const u = await uploadImage(file, { bucket, folder }, setStage)
+      // Covers are shown large, so they keep the full copy; avatars never
+      // render above a few hundred pixels, so they take the small one.
+      onChange(square ? u.thumb : u.src)
+      setShowFocus(false)
+    } catch (err) {
+      setError(readableError(file, err))
+    } finally {
+      setStage(null)
+      setPreview(null)
+      URL.revokeObjectURL(local)
     }
-
-    setBusy(true)
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-    const path = `${folder ? `${folder}/` : ''}${crypto.randomUUID()}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, { cacheControl: '31536000', upsert: false })
-
-    if (uploadError) {
-      setError(uploadError.message)
-      setBusy(false)
-      return
-    }
-
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-    onChange(data.publicUrl)
-    setBusy(false)
   }
-
-  const [dragging, setDragging] = useState(false)
-  const [showUrl, setShowUrl] = useState(false)
-  const square = shape === 'square'
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragging(false)
-    const file = e.dataTransfer.files?.[0]
+    const file = Array.from(e.dataTransfer.files).find(isImageFile)
     if (file) void upload(file)
   }
 
   return (
-    <div>
+    <div
+      onPaste={(e) => {
+        const file = Array.from(e.clipboardData.files).find(isImageFile)
+        if (file) {
+          e.preventDefault()
+          void upload(file)
+        }
+      }}
+    >
       <span className="label">{label}</span>
 
       <div
@@ -86,29 +95,41 @@ export default function ImageUpload({
         className={`group relative overflow-hidden rounded-2xl border-2 transition ${
           dragging
             ? 'border-navy-400 bg-navy-50 dark:bg-navy-800/60'
-            : value
+            : value || preview
               ? 'border-transparent'
               : 'border-dashed border-[var(--line)] hover:border-navy-300 dark:hover:border-navy-600'
         } ${square ? 'mx-auto aspect-square max-w-48' : 'aspect-[16/9]'}`}
       >
-        {value ? (
+        {preview ? (
           <>
-            <CoverImage
-              key={value}
-              src={value}
-              ratio={square ? 1 : 16 / 9}
-              eager
-              className="size-full rounded-2xl"
-            />
+            <img src={preview} alt="" className="size-full rounded-2xl object-cover opacity-60" />
+            <div className="absolute inset-0 grid place-items-center">
+              <span className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white">
+                <span className="kc-spinner kc-spinner-inline" />
+                {STAGE_LABEL[stage ?? 'processing'] ?? 'Working…'}
+              </span>
+            </div>
+          </>
+        ) : value ? (
+          <>
+            <CoverImage key={value} src={value} ratio={square ? 1 : 16 / 9} eager className="size-full rounded-2xl" />
             {/* Controls float over the preview so it shows at its real framing. */}
             <div className="absolute inset-x-0 bottom-0 flex justify-end gap-2 bg-gradient-to-t from-black/60 to-transparent p-3 pt-10 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+              {!square && (
+                <button
+                  type="button"
+                  className="rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-navy-900 shadow hover:bg-white"
+                  onClick={() => setShowFocus((s) => !s)}
+                >
+                  {showFocus ? 'Done' : 'Focus'}
+                </button>
+              )}
               <button
                 type="button"
                 className="rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-navy-900 shadow hover:bg-white"
-                disabled={busy}
                 onClick={() => inputRef.current?.click()}
               >
-                {busy ? 'Uploading…' : 'Replace'}
+                Replace
               </button>
               <button
                 type="button"
@@ -130,20 +151,27 @@ export default function ImageUpload({
               aria-hidden
               className="grid size-11 place-items-center rounded-full bg-navy-50 text-xl text-navy-600 transition group-hover:scale-105 dark:bg-navy-800 dark:text-navy-200"
             >
-              {busy ? '⏳' : '🖼️'}
+              🖼️
             </span>
             <span className="text-sm font-semibold">
-              {busy ? 'Uploading…' : dragging ? 'Drop to upload' : 'Drop an image or click to upload'}
+              {dragging ? 'Drop to upload' : 'Drop, paste, or click to upload'}
             </span>
-            <span className="text-xs muted">PNG, JPG, GIF or WebP · up to 5 MB</span>
+            <span className="text-xs muted">Any photo, any size — it’s straightened and compressed for you</span>
           </button>
         )}
       </div>
 
+      {showFocus && value && !square && (
+        <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
+          <p className="mb-2 text-xs muted">Click the part of the photo that must never be cropped out.</p>
+          <FocusPicker src={src} fx={fx} fy={fy} onChange={(x, y) => onChange(withFocus(value, x, y))} previews={[16 / 9, 2, 4 / 3]} />
+        </div>
+      )}
+
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]
@@ -152,7 +180,7 @@ export default function ImageUpload({
         }}
       />
 
-      {showUrl || (value && !value.includes('/storage/v1/object/public/')) ? (
+      {showUrl || (value && !src.includes('/storage/v1/object/public/')) ? (
         <input
           className="field mt-2 text-xs"
           value={value}

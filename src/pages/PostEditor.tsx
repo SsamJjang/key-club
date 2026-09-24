@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ColorPicker from '../components/ColorPicker'
 import EventSchedule from '../components/EventSchedule'
 import ImageUpload from '../components/ImageUpload'
 import RichTextEditor from '../components/RichTextEditor'
+import { COVER_EVENT } from '../components/media/editorNodes'
+import { uploadTracker } from '../lib/images'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Category, Post } from '../lib/types'
@@ -100,6 +102,19 @@ export default function PostEditor() {
   }, [id, isNew])
 
   const isEvent = form.category === 'event'
+
+  // Photos still uploading hold Save, so a post never goes out with gaps.
+  const uploading = useSyncExternalStore(uploadTracker.subscribe, uploadTracker.get) > 0
+
+  // "Use as cover" on a photo inside the body.
+  useEffect(() => {
+    const onCover = (e: Event) => {
+      const url = (e as CustomEvent<string>).detail
+      if (url) setForm((f) => ({ ...f, cover_url: url }))
+    }
+    window.addEventListener(COVER_EVENT, onCover)
+    return () => window.removeEventListener(COVER_EVENT, onCover)
+  }, [])
 
 
   function setTitle(title: string) {
@@ -251,11 +266,13 @@ export default function PostEditor() {
               <RichTextEditor
                 value={form.body}
                 onChange={(html) => setForm((f) => ({ ...f, body: html }))}
-                placeholder="Write the story. Use the toolbar for headings, bold, lists, links, and images."
+                placeholder="Write the story. Use the toolbar for headings, bold, lists, links, photos and galleries."
               />
               <p className="mt-1 text-xs muted">
                 Formatting works like a document — select text, then click a button. Ctrl+B, Ctrl+I,
-                and Ctrl+U work too.
+                and Ctrl+U work too. Drop or paste photos straight into the text: one becomes a photo
+                you can size and wrap text around, several become a gallery (grid, collage, carousel
+                and more). No limit on how many.
               </p>
             </div>
           </div>
@@ -288,7 +305,7 @@ export default function PostEditor() {
               label="Cover image"
               value={form.cover_url}
               onChange={(url) => setForm({ ...form, cover_url: url })}
-              hint="Shown on cards and at the top of the page. Photos fill the frame; logos and odd shapes are shown whole."
+              hint="Shown on cards and at the top of the page. Photos fill the frame; logos and odd shapes are shown whole. Use Focus to keep faces in frame, or ★ a photo in the body to make it the cover."
             />
           </div>
 
@@ -371,13 +388,13 @@ export default function PostEditor() {
           )}
 
           <div className="flex gap-3">
-            <button type="submit" className="btn btn-ghost flex-1" disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
+            <button type="submit" className="btn btn-ghost flex-1" disabled={saving || uploading}>
+              {saving ? 'Saving…' : uploading ? 'Uploading photos…' : 'Save'}
             </button>
             <button
               type="button"
               className="btn btn-primary flex-1"
-              disabled={saving}
+              disabled={saving || uploading}
               onClick={() => void save(true)}
             >
               Save & publish

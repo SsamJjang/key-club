@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { splitFocus } from '../lib/gallery'
 
 /**
  * Frames a cover image of any shape in a fixed box.
@@ -9,9 +10,12 @@ import { useState } from 'react'
  * frame looks at the image once it loads: close to the box's shape, it fills
  * edge to edge; otherwise it is shown whole, over a blurred, dimmed copy of
  * itself so the empty space still reads as part of the picture.
+ *
+ * A cover URL may carry a focus point ("…#focus=50,30", see lib/gallery.ts);
+ * when the frame crops, that spot stays in view.
  */
 export default function CoverImage({
-  src,
+  src: url,
   className = '',
   ratio = 16 / 9,
   eager = false,
@@ -24,6 +28,7 @@ export default function CoverImage({
   eager?: boolean
 }) {
   const [fill, setFill] = useState<boolean | null>(null)
+  const { src, fx, fy } = splitFocus(url)
 
   function measure(img: HTMLImageElement) {
     if (!img.naturalWidth || !img.naturalHeight) return
@@ -53,7 +58,9 @@ export default function CoverImage({
         src={src}
         alt=""
         loading={eager ? 'eager' : 'lazy'}
+        decoding="async"
         onLoad={(e) => measure(e.currentTarget)}
+        style={fill ? { objectPosition: `${fx}% ${fy}%` } : undefined}
         className={`relative size-full transition-opacity duration-300 ${
           fill === null ? 'opacity-0' : 'opacity-100'
         } ${fill === false ? 'object-contain p-[6%] drop-shadow-xl' : 'object-cover'}`}

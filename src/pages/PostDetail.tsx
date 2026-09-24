@@ -25,6 +25,9 @@ import {
 } from '../lib/rsvp'
 import { renderBody } from '../lib/markdown'
 import CoverImage from '../components/CoverImage'
+import RichBody from '../components/media/RichBody'
+import Lightbox from '../components/media/Lightbox'
+import { bodyImages, splitFocus } from '../lib/gallery'
 import { Avatar, CategoryBadge, EmptyState, Notice, Spinner } from '../components/ui'
 import { colorLabel, colorOf } from '../lib/eventColors'
 
@@ -74,6 +77,8 @@ export default function PostDetail() {
   }, [slug, loadSignups])
 
   const html = useMemo(() => (post ? renderBody(post.body) : ''), [post])
+  const photoCount = useMemo(() => bodyImages(html).length, [html])
+  const [coverOpen, setCoverOpen] = useState(false)
 
   /**
    * Toggle one date of a series, or the whole event when it only has one date
@@ -219,6 +224,14 @@ export default function PostDetail() {
           )}
           <span aria-hidden>·</span>
           <time dateTime={post.created_at}>{formatDate(post.created_at)}</time>
+          {photoCount > 1 && (
+            <>
+              <span aria-hidden>·</span>
+              <a href="#photos" onClick={(e) => { e.preventDefault(); document.getElementById('photos')?.scrollIntoView({ behavior: 'smooth' }) }} className="font-semibold text-navy-600 hover:underline dark:text-navy-200">
+                📷 {photoCount} photos
+              </a>
+            </>
+          )}
           {isAdmin && (
             <>
               <span aria-hidden>·</span>
@@ -231,12 +244,19 @@ export default function PostDetail() {
       </header>
 
       {post.cover_url && (
-        <CoverImage
-          src={post.cover_url}
-          ratio={2}
-          eager
-          className="mt-8 aspect-[16/10] w-full rounded-2xl border border-[var(--line)] shadow-sm sm:aspect-[2/1]"
-        />
+        <button
+          type="button"
+          onClick={() => setCoverOpen(true)}
+          className="mt-8 block w-full cursor-zoom-in"
+          aria-label="View cover photo full size"
+        >
+          <CoverImage
+            src={post.cover_url}
+            ratio={2}
+            eager
+            className="aspect-[16/10] w-full rounded-2xl border border-[var(--line)] shadow-sm sm:aspect-[2/1]"
+          />
+        </button>
       )}
 
       {isEvent && (
@@ -502,7 +522,12 @@ export default function PostDetail() {
         </section>
       )}
 
-      <div className="prose-club mt-10" dangerouslySetInnerHTML={{ __html: html }} />
+      <div id="photos" className="scroll-mt-24">
+        <RichBody html={html} className="mt-10" />
+      </div>
+      {coverOpen && post.cover_url && (
+        <Lightbox items={[{ src: splitFocus(post.cover_url).src, alt: post.title }]} index={0} onClose={() => setCoverOpen(false)} />
+      )}
     </article>
   )
 }
