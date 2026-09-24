@@ -794,7 +794,9 @@ export default function Gallery({ gallery: g, edit }: { gallery: GalleryData; ed
           )}
         </div>
       )}
-      <div ref={ref}>
+      {/* Sized by the page, never by the photos: layouts measure this box
+          and size tiles from it, so its width must not depend on them. */}
+      <div ref={ref} className="kc-measure">
         {width > 0 &&
           (g.layout === 'masonry' ? (
             <MasonryLayout {...props} />

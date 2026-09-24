@@ -205,9 +205,9 @@ export default function PostEditor() {
           e.preventDefault()
           void save()
         }}
-        className="grid gap-8 lg:grid-cols-[1.5fr_1fr]"
+        className="grid gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]"
       >
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <div className="card space-y-5 p-6">
             <div>
               <label className="label" htmlFor="title">Title</label>
@@ -278,7 +278,7 @@ export default function PostEditor() {
           </div>
         </div>
 
-        <aside className="space-y-5">
+        <aside className="min-w-0 space-y-5">
           <div className="card space-y-4 p-6">
             <h2 className="label">Publishing</h2>
             <label className="flex items-center gap-3 text-sm">

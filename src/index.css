@@ -399,7 +399,15 @@ html.dark {
   .kc-caption-input:focus { outline: none; border-bottom-color: var(--color-navy-400); color: var(--ink); }
 
   /* ---- gallery tiles ---------------------------------------------- */
-  .kc-gallery { position: relative; }
+  .kc-gallery { position: relative; min-width: 0; }
+  /* Layouts size their tiles from this box's measured width. Inline-size
+     containment stops the tiles' widths flowing back into it, which in a
+     grid or flex parent would otherwise grow the page without end. */
+  .kc-measure,
+  .kc-gallery-editor {
+    contain: inline-size;
+    min-width: 0;
+  }
   .kc-gallery-title {
     font-family: var(--font-display);
     font-size: 1.2rem;
