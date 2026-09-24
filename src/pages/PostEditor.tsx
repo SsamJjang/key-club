@@ -1,11 +1,12 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ColorPicker from '../components/ColorPicker'
 import EventSchedule from '../components/EventSchedule'
-import ImageUpload from '../components/ImageUpload'
+import CoverField from '../components/CoverField'
 import RichTextEditor from '../components/RichTextEditor'
 import { COVER_EVENT } from '../components/media/editorNodes'
 import { uploadTracker } from '../lib/images'
+import { bodyImages } from '../lib/gallery'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Category, Post } from '../lib/types'
@@ -102,6 +103,8 @@ export default function PostEditor() {
   }, [id, isNew])
 
   const isEvent = form.category === 'event'
+
+  const bodyPhotos = useMemo(() => bodyImages(form.body), [form.body])
 
   // Photos still uploading hold Save, so a post never goes out with gaps.
   const uploading = useSyncExternalStore(uploadTracker.subscribe, uploadTracker.get) > 0
@@ -261,6 +264,12 @@ export default function PostEditor() {
               />
             </div>
 
+            <CoverField
+              value={form.cover_url}
+              onChange={(cover_url) => setForm((f) => ({ ...f, cover_url }))}
+              photos={bodyPhotos}
+            />
+
             <div>
               <span className="label">Body</span>
               <RichTextEditor
@@ -299,14 +308,6 @@ export default function PostEditor() {
               />
               Pin to the top of the home page
             </label>
-            <ImageUpload
-              bucket="post-images"
-              folder="covers"
-              label="Cover image"
-              value={form.cover_url}
-              onChange={(url) => setForm({ ...form, cover_url: url })}
-              hint="Shown on cards and at the top of the page. Photos fill the frame; logos and odd shapes are shown whole. Use Focus to keep faces in frame, or ★ a photo in the body to make it the cover."
-            />
           </div>
 
           {isEvent && (

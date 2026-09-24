@@ -546,6 +546,8 @@ html.dark {
   }
   .kc-chip:hover:not(:disabled) { border-color: var(--color-navy-400); }
   .kc-chip:disabled { opacity: 0.4; }
+  .kc-chip-gold,
+  .kc-chip-gold:hover:not(:disabled) { background: var(--color-gold-400); border-color: var(--color-gold-400); color: var(--color-navy-950); }
   .kc-chip.is-on { background: var(--color-navy-600); border-color: var(--color-navy-600); color: #fff; }
   .kc-icon {
     display: grid;
@@ -662,6 +664,16 @@ html.dark {
   }
   .kc-spinner-inline { position: static; display: inline-block; margin: 0; width: 0.9rem; height: 0.9rem; }
   @keyframes kc-spin { to { transform: rotate(360deg); } }
+
+  /* ---- post cover (editor) --------------------------------------- */
+  .kc-seg-sm button { padding: 0.2rem 0.6rem; font-size: 11px; }
+  .kc-thirds {
+    background:
+      linear-gradient(to right, transparent calc(33.333% - 0.5px), rgb(255 255 255 / 0.45) calc(33.333% - 0.5px), rgb(255 255 255 / 0.45) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgb(255 255 255 / 0.45) calc(66.666% - 0.5px), rgb(255 255 255 / 0.45) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px)),
+      linear-gradient(to bottom, transparent calc(33.333% - 0.5px), rgb(255 255 255 / 0.45) calc(33.333% - 0.5px), rgb(255 255 255 / 0.45) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgb(255 255 255 / 0.45) calc(66.666% - 0.5px), rgb(255 255 255 / 0.45) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px));
+    box-shadow: inset 0 0 0 2px var(--color-gold-400);
+    border-radius: inherit;
+  }
 
   /* ---- viewer ------------------------------------------------------ */
   .kc-lb-progress { width: 0; animation: kc-lb-progress linear forwards; }

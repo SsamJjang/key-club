@@ -14,6 +14,11 @@ import { splitFocus } from '../lib/gallery'
  * A cover URL may carry a focus point ("…#focus=50,30", see lib/gallery.ts);
  * when the frame crops, that spot stays in view.
  */
+/** Within ~20% of the frame's shape, cropping loses little and looks best. */
+export function fillsFrame(w: number, h: number, ratio: number) {
+  return Math.abs(Math.log(w / h / ratio)) < 0.2
+}
+
 export default function CoverImage({
   src: url,
   className = '',
@@ -32,9 +37,7 @@ export default function CoverImage({
 
   function measure(img: HTMLImageElement) {
     if (!img.naturalWidth || !img.naturalHeight) return
-    const r = img.naturalWidth / img.naturalHeight
-    // Within ~20% of the frame's shape, cropping loses little and looks best.
-    setFill(Math.abs(Math.log(r / ratio)) < 0.2)
+    setFill(fillsFrame(img.naturalWidth, img.naturalHeight, ratio))
   }
 
   return (
