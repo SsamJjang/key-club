@@ -21,13 +21,9 @@ export default function Login() {
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       {/* Left: the pitch */}
-      <div className="relative hidden overflow-hidden bg-navy-900 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="navy-stage relative hidden overflow-hidden p-12 lg:flex lg:flex-col lg:justify-between">
         <div
-          className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-navy-600/40 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-32 -left-16 size-96 rounded-full bg-gold-500/20 blur-3xl"
+          className="pointer-events-none absolute -right-10 top-0 h-full w-20 -skew-x-12 bg-[image:var(--gold)]"
           aria-hidden
         />
 
@@ -39,8 +35,8 @@ export default function Login() {
         </div>
 
         <div className="relative">
-          <h1 className="font-[family-name:var(--font-display)] text-5xl font-semibold leading-[1.05] tracking-tight">
-            Caring — our&nbsp;way of&nbsp;life.
+          <h1 className="display pr-16 text-7xl">
+            Caring — our&nbsp;way of&nbsp;<span className="gold-text">life.</span>
           </h1>
           <p className="mt-6 max-w-md text-navy-200">
             The official GCS Key Club website. Events, news, and volunteers in a glance. Sign in with your school email to continue.
@@ -68,9 +64,7 @@ export default function Login() {
             <LogoWordmark size={36} />
           </div>
 
-          <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
-            Welcome back
-          </h2>
+          <h2 className="display text-5xl">Welcome back</h2>
           <p className="mt-2 text-sm muted">
             Key Club member exclusive. Sign-in with your respective school email.
           </p>

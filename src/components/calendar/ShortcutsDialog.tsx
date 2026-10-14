@@ -5,26 +5,24 @@ const GROUPS: [string, [string, string][]][] = [
     'Move around',
     [
       ['T', 'Jump to today'],
-      ['N  or  →', 'Next month / week / day'],
-      ['P  or  ←', 'Previous period'],
-      ['↑ ↓ ← →', 'Move a day at a time in the month grid'],
+      ['J  or  N', 'Next month / week / day'],
+      ['K  or  P', 'Previous period'],
     ],
   ],
   [
     'Switch view',
     [
-      ['D', 'Day'],
-      ['W', 'Week'],
-      ['M', 'Month'],
-      ['A', 'Schedule'],
+      ['D  or  1', 'Day'],
+      ['W  or  2', 'Week'],
+      ['M  or  3', 'Month'],
+      ['A  or  4', 'Schedule'],
     ],
   ],
   [
     'Do things',
     [
       ['/', 'Search events'],
-      ['F', 'Show or hide the filters sidebar'],
-      ['C', 'New event (officers)'],
+      ['C', 'Create event (officers)'],
       ['Esc', 'Close whatever is open'],
       ['?', 'This list'],
     ],

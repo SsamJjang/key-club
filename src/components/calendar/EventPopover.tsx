@@ -1,77 +1,51 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import type { Instance } from '../../lib/calendar'
-import { instanceTime, rowsFor, statusOf } from '../../lib/calendar'
+import { rowsFor, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 import { downloadIcs, googleCalendarUrl, icsForEvent } from '../../lib/ics'
 import { formatServiceHours, isRecurring } from '../../lib/format'
+import { Icon, IconButton, type IconName } from './icons'
 
-const GAP = 10
-const WIDTH = 360
+const GAP = 8
 
 /**
- * The floating event card.
- *
- * Clicking an event should answer "what is this and am I in?" without
- * leaving the grid you are reading — that is the single biggest reason a
- * calendar feels fast. So this is a popover anchored to whatever was
- * clicked, with the RSVP right inside it, and it becomes a bottom sheet
- * on a phone where a floating card would land off-screen.
+ * Places a floating card beside `anchor`, clamped to the viewport; below
+ * 640px it reports `sheet` so the caller renders a bottom sheet instead.
+ * Escape and a click outside both call `onClose`.
  */
-export default function EventPopover({
-  instance,
-  anchor,
-  userId,
-  isAdmin,
-  busy,
-  onRsvp,
-  onClose,
-}: {
-  instance: Instance
-  /** Bounding rect of the chip that opened this. */
-  anchor: DOMRect
-  userId: string | null
-  isAdmin: boolean
-  busy: boolean
-  onRsvp: (instance: Instance) => void
-  onClose: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
+export function useFloating(
+  ref: RefObject<HTMLDivElement | null>,
+  anchor: DOMRect,
+  width: number,
+  onClose: () => void,
+  over = false,
+) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const [sheet, setSheet] = useState(() => window.innerWidth < 640)
-  const [copied, setCopied] = useState(false)
 
-  const { event, start } = instance
-  const color = colorOf(event)
-  const status = statusOf(event, start, userId)
-  const { going, mine, spotsLeft } = rowsFor(instance, userId)
-  const series = isRecurring(event)
-  const hours = formatServiceHours(event)
-  const gcal = googleCalendarUrl(event, start)
-  const pct = event.capacity ? Math.min(100, (going / event.capacity) * 100) : 0
-
-  // Position after paint, when the card's real height is known.
   useLayoutEffect(() => {
     const narrow = window.innerWidth < 640
     setSheet(narrow)
     if (narrow) return
-
-    const box = ref.current?.getBoundingClientRect()
-    const height = box?.height ?? 320
-    // Prefer the right of the chip, fall back to its left, then clamp.
-    let left = anchor.right + GAP
-    if (left + WIDTH > window.innerWidth - GAP) left = anchor.left - WIDTH - GAP
-    if (left < GAP) left = Math.max(GAP, (window.innerWidth - WIDTH) / 2)
-
-    let top = anchor.top - 8
-    if (top + height > window.innerHeight - GAP) top = window.innerHeight - height - GAP
-    if (top < GAP) top = GAP
-
+    const height = ref.current?.getBoundingClientRect().height ?? 320
+    let left: number
+    let top: number
+    if (over) {
+      // Google's "N more" card sits on top of the day it expands.
+      left = anchor.left + anchor.width / 2 - width / 2
+      top = anchor.top - 60
+    } else {
+      left = anchor.right + GAP
+      if (left + width > window.innerWidth - GAP) left = anchor.left - width - GAP
+      top = anchor.top - 8
+    }
+    left = Math.min(Math.max(GAP, left), window.innerWidth - width - GAP)
+    top = Math.min(Math.max(GAP, top), window.innerHeight - height - GAP)
     setPos({ top, left })
-  }, [anchor])
+  }, [anchor, width, over, ref])
 
-  // Escape closes, and a click anywhere outside does too — the two things
-  // everyone tries first.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -83,18 +57,76 @@ export default function EventPopover({
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     document.addEventListener('keydown', onKey)
-    // Deferred: the click that opened this is still propagating.
+    // Deferred: the click that opened the card is still propagating.
     const id = setTimeout(() => document.addEventListener('mousedown', onDown), 0)
     return () => {
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('mousedown', onDown)
       clearTimeout(id)
     }
-  }, [onClose])
+  }, [onClose, ref])
+
+  const style = sheet ? undefined : { top: pos?.top ?? -9999, left: pos?.left ?? -9999, width }
+  return { sheet, style }
+}
+
+function Row({ icon, children }: { icon: IconName | 'swatch'; children: ReactNode }) {
+  return (
+    <div className="flex gap-4 py-1.5">
+      <span className="flex w-5 shrink-0 justify-center pt-0.5 muted">
+        {icon === 'swatch' ? (
+          <span className="ec-dot mt-1.5 size-3.5 rounded" aria-hidden />
+        ) : (
+          <Icon name={icon} />
+        )}
+      </span>
+      <div className="min-w-0 flex-1 text-sm">{children}</div>
+    </div>
+  )
+}
+
+/** Google Calendar's event card, with the RSVP as "Going? Yes / No". */
+export default function EventPopover({
+  instance,
+  anchor,
+  userId,
+  isAdmin,
+  busy,
+  onRsvp,
+  onClose,
+}: {
+  instance: Instance
+  anchor: DOMRect
+  userId: string | null
+  isAdmin: boolean
+  busy: boolean
+  onRsvp: (instance: Instance) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const { sheet, style } = useFloating(ref, anchor, 448, onClose)
+  const [menu, setMenu] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const { event, start } = instance
+  const status = statusOf(event, start, userId)
+  const { going, mine, spotsLeft } = rowsFor(instance, userId)
+  const series = isRecurring(event)
+  const hours = formatServiceHours(event)
+  const gcal = googleCalendarUrl(event, start)
 
   useEffect(() => {
-    ref.current?.focus()
+    // preventScroll: focusing must not drag the time grid behind it.
+    ref.current?.focus({ preventScroll: true })
   }, [])
+
+  const dateLine = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const timeLine = instance.allDay
+    ? null
+    : event.ends_at
+      ? `${clock(start)} – ${clock(instance.end)}`
+      : clock(start)
 
   function copyLink() {
     const url = `${window.location.origin}${window.location.pathname}#/post/${event.slug}`
@@ -102,176 +134,172 @@ export default function EventPopover({
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)
     })
+    setMenu(false)
   }
 
-  const style = sheet
-    ? undefined
-    : { top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: WIDTH }
+  const canAnswer = status === 'open' || status === 'going'
+  const linkIcon =
+    'grid size-10 place-items-center rounded-full text-[var(--ink-soft)] transition hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'
 
   return (
     <>
-      {sheet && (
-        <div className="fixed inset-0 z-40 bg-black/40" aria-hidden onClick={onClose} />
-      )}
+      {sheet && <div className="fixed inset-0 z-40 bg-black/40" aria-hidden onClick={onClose} />}
       <div
         ref={ref}
         role="dialog"
         aria-label={event.title}
         tabIndex={-1}
-        data-ec={color}
+        data-ec={colorOf(event)}
         style={style}
-        className={`cal-popover z-50 outline-none ${
-          sheet
-            ? 'fixed inset-x-2 bottom-2 max-h-[80vh] overflow-y-auto'
-            : 'fixed max-h-[85vh] overflow-y-auto'
+        className={`cal-popover z-50 overflow-y-auto outline-none ${
+          sheet ? 'fixed inset-x-0 bottom-0 max-h-[85vh] rounded-b-none' : 'fixed max-h-[85vh]'
         }`}
       >
-        <div className="flex items-start gap-3 border-b border-[var(--line)] p-4">
-          <span className="ec-dot mt-1.5 size-3 shrink-0 rounded-sm" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <Link
-              to={`/post/${event.slug}`}
-              className="font-[family-name:var(--font-display)] text-base font-semibold leading-snug hover:underline"
-            >
-              {event.title}
+        {/* Action bar */}
+        <div className="flex items-center justify-end gap-0.5 px-2 pt-2">
+          {isAdmin && (
+            <Link to={`/admin/posts/${event.id}`} title="Edit event" aria-label="Edit event" className={linkIcon}>
+              <Icon name="edit" />
             </Link>
-            <p className="mt-0.5 text-sm muted">
-              {start.toLocaleDateString(undefined, {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-              {' · '}
-              {instanceTime(instance)}
-            </p>
-            {event.calendar_label && (
-              <span className="ec-soft mt-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
-                {event.calendar_label}
-              </span>
+          )}
+          <Link to={`/post/${event.slug}`} title="Open event page" aria-label="Open event page" className={linkIcon}>
+            <Icon name="open" />
+          </Link>
+          <div className="relative">
+            <IconButton icon="more" label="Options" onClick={() => setMenu((m) => !m)} />
+            {menu && (
+              <div className="cal-popover absolute right-0 top-11 z-10 w-56 py-2 text-sm">
+                {gcal && (
+                  <a
+                    href={gcal}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setMenu(false)}
+                    className="block px-4 py-2 hover:bg-[var(--surface-2)]"
+                  >
+                    Add to my Google Calendar
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadIcs(event.slug, icsForEvent(event, series ? null : start))
+                    setMenu(false)
+                  }}
+                  className="block w-full px-4 py-2 text-left hover:bg-[var(--surface-2)]"
+                >
+                  Download .ics
+                </button>
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="block w-full px-4 py-2 text-left hover:bg-[var(--surface-2)]"
+                >
+                  Copy link
+                </button>
+              </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid size-7 shrink-0 place-items-center rounded-full text-sm muted transition hover:bg-[var(--surface)]"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <IconButton icon="close" label="Close" onClick={onClose} />
         </div>
 
-        <div className="space-y-3 p-4 text-sm">
-          {event.recurrence_note && (
-            <p className="flex gap-2 muted">
-              <span aria-hidden>🔁</span>
-              {event.recurrence_note}
+        <div className="px-5 pb-2">
+          <Row icon="swatch">
+            <h2 className="text-[1.375rem] leading-snug">{event.title}</h2>
+            <p className="mt-1 muted">
+              {dateLine}
+              {timeLine && <> ⋅ {timeLine}</>}
             </p>
-          )}
-          {event.location && (
-            <p className="flex gap-2 muted">
-              <span aria-hidden>📍</span>
-              {event.location}
-            </p>
-          )}
-          {hours && (
-            <p className="flex gap-2 muted">
-              <span aria-hidden>⏱️</span>
-              {hours} of service
-            </p>
-          )}
-          {event.summary && <p>{event.summary}</p>}
+            {event.recurrence_note && <p className="muted">{event.recurrence_note}</p>}
+          </Row>
 
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium">
-                {going} {going === 1 ? 'member' : 'members'} going
-                {series && <span className="muted"> this date</span>}
-              </span>
+          {event.location && (
+            <Row icon="pin">
+              <p className="pt-0.5">{event.location}</p>
+            </Row>
+          )}
+
+          <Row icon="people">
+            <p className="pt-0.5">
+              {going} going{series ? ' this date' : ''}
               {spotsLeft !== null && (
-                <span
-                  className={
-                    spotsLeft === 0 ? 'muted' : 'font-semibold text-gold-600 dark:text-gold-300'
-                  }
-                >
-                  {spotsLeft === 0 ? 'Full' : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`}
+                <span className="muted">
+                  {' · '}
+                  {spotsLeft === 0 ? 'full' : `${spotsLeft} of ${event.capacity} spots left`}
                 </span>
               )}
-            </div>
-            {event.capacity ? (
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--surface)]">
-                <div
-                  className={`h-full rounded-full ${spotsLeft === 0 ? 'bg-navy-400' : 'bg-gold-400'}`}
-                  style={{ width: `${Math.max(pct, 3)}%` }}
-                />
+            </p>
+          </Row>
+
+          {hours && (
+            <Row icon="clock">
+              <p className="pt-0.5">{hours === 'TBD' ? 'Service hours TBD' : `${hours} of service`}</p>
+            </Row>
+          )}
+
+          {event.summary && (
+            <Row icon="notes">
+              <p className="whitespace-pre-line pt-0.5">{event.summary}</p>
+            </Row>
+          )}
+
+          <Row icon="today">
+            <p className="pt-0.5">{event.calendar_label || 'Key Club'}</p>
+          </Row>
+        </div>
+
+        {/* RSVP */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] px-5 py-3 text-sm">
+          {status === 'past' ? (
+            <span className="muted">This event has ended{mine ? ' · you went' : ''}</span>
+          ) : !canAnswer ? (
+            <span className="muted">{status === 'full' ? 'This event is full' : 'Sign-ups are closed'}</span>
+          ) : (
+            <>
+              <span className="font-medium">Going{series ? ' this date' : ''}?</span>
+              <div className="flex gap-2">
+                <RsvpButton on={mine} disabled={busy} onClick={() => !mine && onRsvp(instance)}>
+                  Yes
+                </RsvpButton>
+                <RsvpButton on={!mine} disabled={busy} onClick={() => mine && onRsvp(instance)}>
+                  No
+                </RsvpButton>
               </div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => onRsvp(instance)}
-              disabled={busy || (status !== 'open' && status !== 'going')}
-              className={`btn py-1.5 text-sm ${mine ? 'btn-ghost' : 'btn-primary'}`}
-            >
-              {busy
-                ? 'Saving…'
-                : mine
-                  ? series
-                    ? '✓ In for this date — cancel'
-                    : '✓ You’re going — cancel'
-                  : status === 'past'
-                    ? 'Already happened'
-                    : status === 'full'
-                      ? 'Full'
-                      : status === 'closed'
-                        ? 'Sign-ups closed'
-                        : series
-                          ? 'Count me in for this date'
-                          : 'Count me in'}
-            </button>
-
-            <Link to={`/post/${event.slug}`} className="btn btn-ghost py-1.5 text-sm">
-              {series ? 'All dates' : 'Details'}
-            </Link>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--line)] pt-3 text-xs">
-            {gcal && (
-              <a
-                href={gcal}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-navy-600 hover:underline dark:text-navy-200"
-              >
-                Add to Google
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={() => downloadIcs(event.slug, icsForEvent(event, series ? null : start))}
-              className="font-semibold text-navy-600 hover:underline dark:text-navy-200"
-            >
-              Download .ics
-            </button>
-            <button
-              type="button"
-              onClick={copyLink}
-              className="font-semibold text-navy-600 hover:underline dark:text-navy-200"
-            >
-              {copied ? 'Link copied ✓' : 'Copy link'}
-            </button>
-            {isAdmin && (
-              <Link
-                to={`/admin/posts/${event.id}`}
-                className="ml-auto font-semibold text-navy-600 hover:underline dark:text-navy-200"
-              >
-                Edit event
-              </Link>
-            )}
-          </div>
+              {busy && <span className="text-xs muted">Saving…</span>}
+            </>
+          )}
+          {copied && <span className="ml-auto text-xs muted">Link copied</span>}
         </div>
       </div>
     </>
+  )
+}
+
+function RsvpButton({
+  on,
+  disabled,
+  onClick,
+  children,
+}: {
+  on: boolean
+  disabled: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={on}
+      className={`flex h-8 items-center gap-1 rounded-full border px-4 text-sm font-medium transition disabled:opacity-60 ${
+        on
+          ? 'border-transparent bg-navy-100 text-navy-800 dark:bg-navy-700 dark:text-navy-50'
+          : 'border-[var(--line-strong)] hover:bg-[var(--surface-2)]'
+      }`}
+    >
+      {on && <Icon name="check" className="size-4" />}
+      {children}
+    </button>
   )
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
 import { addSignup, distinctMembers, removeSignup, signupKey } from '../lib/rsvp'
-import { Notice, PageHeader, Spinner } from '../components/ui'
+import { Notice, Spinner } from '../components/ui'
 import EventCalendar from '../components/EventCalendar'
 import type { CalendarEvent } from '../components/EventCalendar'
 
@@ -85,15 +85,11 @@ export default function Events() {
   )
 
   return (
-    <div className="rise">
-      <PageHeader
-        eyebrow="Calendar"
-        title="Events"
-        subtitle="Service projects, meetings, and everything worth showing up for. Click any event to sign up without leaving the grid."
-      />
-
+    // Full-bleed, full-height, like Google Calendar: the layout drops its
+    // padding and footer on this route (see Layout).
+    <div className="relative h-[calc(100dvh-4rem-4.1rem-env(safe-area-inset-bottom))] md:h-[calc(100dvh-4rem)]">
       {error && (
-        <div className="mb-6">
+        <div className="absolute inset-x-0 top-16 z-20 mx-auto w-fit max-w-[90%]">
           <Notice tone="error">{error}</Notice>
         </div>
       )}

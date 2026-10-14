@@ -1,156 +1,132 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import type { Instance } from '../../lib/calendar'
-import { groupByDay, instanceTime, isToday, rowsFor, statusOf } from '../../lib/calendar'
+import type { CalendarEvent, Instance } from '../../lib/calendar'
+import { groupByDay, instanceTime, isToday, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
-import { formatServiceHours, fromDayKey } from '../../lib/format'
+import { fromDayKey } from '../../lib/format'
 
 /**
- * The schedule list.
- *
- * This is the view for planning rather than browsing: no grid, no empty
- * days, just what is coming in the order it is coming, with enough on
- * each row to decide whether to sign up without opening anything.
+ * Google Calendar's Schedule view — also what search results look like:
+ * one row per day that has something, the date in a left column, then
+ * dot · time · title for each event.
  */
 export default function AgendaView({
   instances,
-  undatedEvents,
+  undatedEvents = [],
   userId,
   onOpen,
-  rangeLabel,
-  showHeaders = true,
+  empty,
 }: {
   instances: Instance[]
-  undatedEvents: Instance['event'][]
+  undatedEvents?: CalendarEvent[]
   userId: string | null
   onOpen: (instance: Instance, rect: DOMRect) => void
-  rangeLabel: string
-  /** Off when the surrounding page already names the day — no echo. */
-  showHeaders?: boolean
+  empty: string
 }) {
   const days = useMemo(() => [...groupByDay(instances).entries()], [instances])
 
   if (days.length === 0 && undatedEvents.length === 0) {
-    return (
-      <div className="px-6 py-14 text-center">
-        <div className="text-3xl" aria-hidden>
-          🗓️
-        </div>
-        <p className="mt-3 font-semibold">Nothing {rangeLabel}</p>
-        <p className="mt-1 text-sm muted">
-          Try widening the range, or clearing the filters in the sidebar.
-        </p>
-      </div>
-    )
+    return <p className="px-6 py-16 text-center muted">{empty}</p>
   }
 
+  let lastMonth = ''
+
   return (
-    <div className="cal-scroll max-h-[70vh] overflow-y-auto">
+    <div className="cal-scroll h-full overflow-y-auto px-2 py-2 sm:px-4">
       {days.map(([key, list]) => {
         const date = fromDayKey(key)
         const today = isToday(date)
+        const month = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+        const newMonth = month !== lastMonth
+        lastMonth = month
 
         return (
-          <section key={key} className="border-b border-[var(--line)] last:border-b-0">
-            {showHeaders && (
-            <div className="sticky top-0 z-10 flex items-baseline gap-2 border-b border-[var(--line)] bg-[var(--card)] px-4 py-1.5">
-              <span
-                className={`text-sm font-semibold ${today ? 'text-navy-600 dark:text-navy-200' : ''}`}
-              >
-                {date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-              </span>
-              {today && (
-                <span className="rounded-full bg-navy-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                  Today
-                </span>
-              )}
-              <span className="ml-auto text-xs muted">
-                {list.length} {list.length === 1 ? 'event' : 'events'}
-              </span>
-            </div>
+          <div key={key}>
+            {newMonth && (
+              <p className="px-2 pb-1 pt-4 text-sm font-medium muted first:pt-1">{month}</p>
             )}
+            <div className="flex gap-2 border-b border-[var(--line)] py-1.5 last:border-b-0">
+              <div className="flex w-[4.5rem] shrink-0 items-start gap-1.5 pt-1 sm:w-24">
+                <span
+                  className={`grid size-8 shrink-0 place-items-center rounded-full text-xl ${
+                    today ? 'bg-navy-600 text-white dark:bg-navy-300 dark:text-navy-950' : ''
+                  }`}
+                >
+                  {date.getDate()}
+                </span>
+                <span
+                  className={`pt-1.5 text-[11px] font-medium uppercase leading-tight ${
+                    today ? 'text-navy-600 dark:text-navy-200' : 'muted'
+                  }`}
+                >
+                  {date.toLocaleDateString(undefined, { month: 'short' })},{' '}
+                  {date.toLocaleDateString(undefined, { weekday: 'short' })}
+                </span>
+              </div>
 
-            <ul>
-              {list.map((instance) => {
-                const { event } = instance
-                const status = statusOf(event, instance.start, userId)
-                const { going, mine, spotsLeft } = rowsFor(instance, userId)
-                const hours = formatServiceHours(event)
-
-                return (
-                  <li key={instance.id}>
-                    <button
-                      type="button"
-                      data-ec={colorOf(event)}
-                      onClick={(e) => onOpen(instance, e.currentTarget.getBoundingClientRect())}
-                      className={`ec-rule flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left transition hover:bg-[var(--surface)] ${
-                        status === 'past' ? 'opacity-55' : ''
-                      }`}
-                    >
-                      <span className="w-32 shrink-0 text-xs font-semibold tabular-nums muted">
-                        {instanceTime(instance)}
-                      </span>
-
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">
-                          {mine && <span aria-hidden>✓ </span>}
-                          {event.title}
+              <ul className="min-w-0 flex-1">
+                {list.map((instance) => {
+                  const status = statusOf(instance.event, instance.start, userId)
+                  return (
+                    <li key={instance.id}>
+                      <button
+                        type="button"
+                        data-ec={colorOf(instance.event)}
+                        onClick={(e) => onOpen(instance, e.currentTarget.getBoundingClientRect())}
+                        className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition sm:rounded-full hover:bg-[var(--surface-2)] ${
+                          status === 'past' ? 'opacity-55' : ''
+                        }`}
+                      >
+                        <span
+                          className={`size-3 shrink-0 rounded-full ${status === 'going' ? 'ec-dot' : 'ec-ring'}`}
+                          aria-hidden
+                        />
+                        {/* Phones stack title over time, as the Google app does. */}
+                        <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-3">
+                          <span className="order-2 shrink-0 text-xs tabular-nums muted sm:order-1 sm:w-36 sm:text-sm">
+                            {instance.allDay ? 'All day' : instanceTime(instance)}
+                          </span>
+                          <span className="order-1 min-w-0 truncate font-medium sm:order-2 sm:flex-1">
+                            {instance.event.title}
+                            {instance.event.location && (
+                              <span className="hidden font-normal muted md:inline"> · {instance.event.location}</span>
+                            )}
+                          </span>
                         </span>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs muted">
-                          {event.calendar_label && (
-                            <span className="ec-text font-semibold">{event.calendar_label}</span>
-                          )}
-                          {event.location && <span>📍 {event.location}</span>}
-                          {hours && <span>⏱️ {hours}</span>}
-                          {event.recurrence_note && <span>🔁 {event.recurrence_note}</span>}
-                        </span>
-                      </span>
-
-                      <span className="flex shrink-0 items-center gap-2 text-xs">
-                        <span className="muted">
-                          {going}
-                          {event.capacity ? `/${event.capacity}` : ''} going
-                        </span>
-                        {status === 'open' && spotsLeft !== null && spotsLeft <= 3 && (
-                          <span className="rounded-full bg-gold-100 px-2 py-0.5 font-semibold text-gold-600 dark:bg-gold-500/20 dark:text-gold-200">
-                            {spotsLeft} left
+                        {status === 'going' && (
+                          <span className="hidden shrink-0 text-xs font-medium text-emerald-700 sm:inline dark:text-emerald-300">
+                            Going
                           </span>
                         )}
-                        {status === 'closed' && <span className="muted">Closed</span>}
-                        {status === 'full' && <span className="muted">Full</span>}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </div>
         )
       })}
 
       {undatedEvents.length > 0 && (
-        <section>
-          {showHeaders && (
-            <div className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)] px-4 py-1.5 text-sm font-semibold">
-              No date set yet
-            </div>
-          )}
+        <div className="pt-4">
+          <p className="px-2 pb-1 text-sm font-medium muted">No date yet</p>
           <ul>
             {undatedEvents.map((event) => (
               <li key={event.id}>
                 <Link
                   to={`/post/${event.slug}`}
                   data-ec={colorOf(event)}
-                  className="ec-rule flex items-center gap-4 px-4 py-3 transition hover:bg-[var(--surface)]"
+                  className="flex items-center gap-3 rounded-full px-3 py-2 text-sm transition hover:bg-[var(--surface-2)] sm:ml-24"
                 >
-                  <span className="w-32 shrink-0 text-xs font-semibold muted">Date TBA</span>
+                  <span className="ec-ring size-3 shrink-0 rounded-full" aria-hidden />
+                  <span className="w-24 shrink-0 text-xs muted sm:w-36 sm:text-sm">Date TBA</span>
                   <span className="min-w-0 flex-1 truncate font-medium">{event.title}</span>
-                  <span className="shrink-0 text-xs muted">{event.going} interested</span>
                 </Link>
               </li>
             ))}
           </ul>
-        </section>
+        </div>
       )}
     </div>
   )

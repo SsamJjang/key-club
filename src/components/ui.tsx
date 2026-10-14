@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { initials } from '../lib/format'
 import type { Category, Role } from '../lib/types'
 
@@ -92,12 +93,12 @@ export function EmptyState({
   children?: ReactNode
 }) {
   return (
-    <div className="card px-6 py-14 text-center">
-      <div className="text-3xl" aria-hidden>
+    <div className="card lanes flex flex-col items-center px-6 py-14 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-[var(--surface-2)] text-2xl" aria-hidden>
         {icon}
       </div>
-      <p className="mt-3 font-semibold">{title}</p>
-      {children && <p className="mt-1 text-sm muted max-w-sm mx-auto">{children}</p>}
+      <p className="display mt-4 text-2xl">{title}</p>
+      {children && <p className="mt-2 text-sm muted max-w-sm mx-auto">{children}</p>}
     </div>
   )
 }
@@ -135,28 +136,50 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        {eyebrow && (
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-500 dark:text-gold-300">
-            {eyebrow}
-          </p>
-        )}
-        <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">
-          {title}
-        </h1>
-        {subtitle && <p className="mt-2 max-w-2xl text-sm muted">{subtitle}</p>}
+    <header className="mb-10 flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+        <h1 className="display mt-2 text-5xl sm:text-6xl">{title}</h1>
+        {subtitle && <p className="mt-3 max-w-2xl muted">{subtitle}</p>}
       </div>
       {action}
     </header>
   )
 }
 
+/** A section heading inside a page: eyebrow, serif title, optional "see all" link. */
+export function SectionTitle({
+  eyebrow,
+  title,
+  link,
+}: {
+  eyebrow?: string
+  title: string
+  link?: { to: string; label: string }
+}) {
+  return (
+    <div className="mb-5 flex items-end justify-between gap-4">
+      <div>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+        <h2 className="display mt-1.5 text-3xl sm:text-4xl">{title}</h2>
+      </div>
+      {link && (
+        <Link
+          to={link.to}
+          className="shrink-0 text-sm font-semibold text-navy-600 hover:underline dark:text-navy-200"
+        >
+          {link.label} →
+        </Link>
+      )}
+    </div>
+  )
+}
+
 export function Stat({ value, label }: { value: ReactNode; label: string }) {
   return (
     <div className="card px-4 py-3">
-      <div className="font-[family-name:var(--font-display)] text-2xl font-semibold">{value}</div>
-      <div className="mt-0.5 text-xs uppercase tracking-wide muted">{label}</div>
+      <div className="display num text-3xl">{value}</div>
+      <div className="mt-1 text-[11px] font-semibold uppercase tracking-wider muted">{label}</div>
     </div>
   )
 }

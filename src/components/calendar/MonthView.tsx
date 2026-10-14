@@ -1,239 +1,211 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Instance } from '../../lib/calendar'
-import {
-  WEEKDAY_SHORT,
-  dayKey,
-  isToday,
-  isWeekend,
-  isoWeek,
-  monthCells,
-  shortTime,
-  statusOf,
-} from '../../lib/calendar'
+import { WEEKDAY_SHORT, dayKey, isToday, monthCells, shortTime, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 
 /**
- * The month grid.
+ * Google Calendar's month view: the grid fills the screen, rows share the
+ * height evenly, and each cell shows as many events as fit before
+ * collapsing the rest into "N more".
  *
- * Every cell is a real button, the whole grid is one tab stop with arrow
- * keys inside it, and each event chip is its own button on top — so the
- * calendar is fully usable from the keyboard without trapping anyone in
- * forty-two tab stops.
+ * All-day events are filled bars; timed ones are a dot, a time and a title.
+ * A filled dot / solid bar means you are going; a hollow one means you
+ * have not signed up — Google's "needs a response" look.
  */
 export default function MonthView({
   cursor,
   weekStart,
-  selected,
   byDay,
   userId,
   isAdmin,
-  showWeekNumbers,
-  onSelect,
-  onNavigate,
   onOpen,
+  onDay,
   onMore,
   onCreate,
 }: {
   cursor: Date
   weekStart: number
-  selected: string
   byDay: Map<string, Instance[]>
   userId: string | null
   isAdmin: boolean
-  showWeekNumbers: boolean
-  onSelect: (key: string) => void
-  onNavigate: (days: number) => void
   onOpen: (instance: Instance, rect: DOMRect) => void
-  onMore: (date: Date) => void
+  /** The date number was clicked: open that day. */
+  onDay: (date: Date) => void
+  onMore: (date: Date, rect: DOMRect) => void
   onCreate: (date: Date) => void
 }) {
-  const gridRef = useRef<HTMLDivElement>(null)
-  const cells = useMemo(() => monthCells(cursor, weekStart), [cursor, weekStart])
-  const labels = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => WEEKDAY_SHORT[(weekStart + i) % 7]),
-    [weekStart],
-  )
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ w: 1000, h: 700 })
 
-  // Follow arrow-key movement with focus, but only while the grid already
-  // has it — otherwise clicking a chip would yank focus back to the cell.
-  useEffect(() => {
-    const grid = gridRef.current
-    if (!grid || !grid.contains(document.activeElement)) return
-    grid.querySelector<HTMLElement>(`[data-day="${selected}"]`)?.focus()
-  }, [selected, cells])
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    const moves: Record<string, number> = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      ArrowUp: -7,
-      ArrowDown: 7,
+  // Trailing weeks that fall entirely in the next month are dropped, so a
+  // month is five rows when it fits in five — as Google does.
+  const cells = useMemo(() => {
+    const all = monthCells(cursor, weekStart)
+    const rows = Math.ceil(all.length / 7)
+    const out = all.slice(0, rows * 7)
+    while (out.length > 35 && out[out.length - 7].getMonth() !== cursor.getMonth()) {
+      out.splice(out.length - 7, 7)
     }
-    if (e.key in moves) {
-      e.preventDefault()
-      onNavigate(moves[e.key])
-    }
-  }
+    return out
+  }, [cursor, weekStart])
+  const rows = cells.length / 7
 
-  const columns = showWeekNumbers ? 'grid-cols-[2.25rem_repeat(7,minmax(0,1fr))]' : 'grid-cols-7'
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight })
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const narrow = size.w < 640
+  const chipH = narrow ? 17 : 22
+  const rowH = size.h / rows
 
   return (
-    <div className="overflow-hidden">
-      <div className={`grid ${columns} border-b border-[var(--line)]`}>
-        {showWeekNumbers && <span />}
-        {labels.map((label) => (
+    <div
+      ref={ref}
+      className="grid h-full min-h-0 grid-cols-7 select-none"
+      style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
+      role="grid"
+      aria-label={cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+    >
+      {cells.map((date, index) => {
+        const key = dayKey(date)
+        const list = byDay.get(key) ?? []
+        const inMonth = date.getMonth() === cursor.getMonth()
+        const today = isToday(date)
+        const firstRow = index < 7
+
+        // Room for chips once the date (and, on row one, the weekday) is drawn.
+        const head = (firstRow ? 44 : 30) + 4
+        const fit = Math.max(0, Math.floor((rowH - head) / chipH))
+        const shown = list.length > fit ? list.slice(0, Math.max(0, fit - 1)) : list
+        const extra = list.length - shown.length
+
+        const label =
+          date.getDate() === 1
+            ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+            : String(date.getDate())
+
+        return (
           <div
-            key={label}
-            className="px-1 py-2 text-center text-[11px] font-semibold uppercase tracking-wide muted"
+            key={key}
+            role="gridcell"
+            onClick={(e) => {
+              if (isAdmin && e.target === e.currentTarget) onCreate(date)
+            }}
+            className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-r border-[var(--line)] pb-1 ${
+              index % 7 === 6 ? 'border-r-0' : ''
+            } ${isAdmin ? 'cursor-pointer' : ''}`}
           >
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{label[0]}</span>
-          </div>
-        ))}
-      </div>
-
-      <div
-        ref={gridRef}
-        role="grid"
-        aria-label="Month view"
-        onKeyDown={onKeyDown}
-        className={`grid ${columns}`}
-      >
-        {cells.map((date, index) => {
-          const key = dayKey(date)
-          const list = byDay.get(key) ?? []
-          const inMonth = date.getMonth() === cursor.getMonth()
-          const today = isToday(date)
-          const isSelected = key === selected
-          const startsRow = index % 7 === 0
-
-          return (
-            <div key={key} className="contents">
-              {showWeekNumbers && startsRow && (
-                <div className="grid place-items-start justify-center border-b border-r border-[var(--line)] pt-2 text-[10px] font-semibold muted">
-                  {isoWeek(date)}
-                </div>
+            <div className="pointer-events-none flex flex-col items-center pt-1.5">
+              {firstRow && (
+                <span className="mb-0.5 text-[11px] font-medium uppercase tracking-wide muted">
+                  {narrow
+                    ? WEEKDAY_SHORT[(weekStart + index) % 7][0]
+                    : WEEKDAY_SHORT[(weekStart + index) % 7]}
+                </span>
               )}
-
-              <div
-                role="gridcell"
-                aria-selected={isSelected}
-                className={`group relative min-h-20 border-b border-r border-[var(--line)] p-1 sm:min-h-28 ${
-                  inMonth ? '' : 'opacity-45'
-                } ${isWeekend(date) && inMonth ? 'bg-[color-mix(in_srgb,var(--surface)_55%,transparent)]' : ''} ${
-                  isSelected ? 'ring-2 ring-inset ring-navy-400' : ''
+              <button
+                type="button"
+                onClick={() => onDay(date)}
+                aria-current={today ? 'date' : undefined}
+                aria-label={date.toDateString()}
+                className={`pointer-events-auto grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-xs font-medium transition ${
+                  today
+                    ? 'bg-navy-600 text-white dark:bg-navy-300 dark:text-navy-950'
+                    : inMonth
+                      ? 'hover:bg-[var(--surface-2)]'
+                      : 'text-[var(--ink-faint)] hover:bg-[var(--surface-2)]'
                 }`}
               >
+                {label}
+              </button>
+            </div>
+
+            <div className="mt-0.5 min-w-0 px-1">
+              {shown.map((instance) => (
+                <Chip
+                  key={instance.id}
+                  instance={instance}
+                  userId={userId}
+                  narrow={narrow}
+                  height={chipH}
+                  onOpen={onOpen}
+                />
+              ))}
+              {extra > 0 && (
                 <button
                   type="button"
-                  data-day={key}
-                  tabIndex={isSelected ? 0 : -1}
-                  onClick={() => onSelect(key)}
-                  onDoubleClick={() => isAdmin && onCreate(date)}
-                  aria-label={`${date.toDateString()}, ${list.length} event${
-                    list.length === 1 ? '' : 's'
+                  onClick={(e) => onMore(date, e.currentTarget.getBoundingClientRect())}
+                  className={`block w-full truncate rounded px-1.5 text-left font-medium transition hover:bg-[var(--surface-2)] ${
+                    narrow ? 'text-[10px]' : 'text-xs'
                   }`}
-                  className="flex w-full items-center justify-between rounded px-0.5 text-left"
+                  style={{ height: chipH, lineHeight: `${chipH}px` }}
                 >
-                  <span
-                    className={`inline-grid size-6 place-items-center rounded-full text-xs font-semibold ${
-                      today ? 'bg-navy-600 text-white' : ''
-                    }`}
-                  >
-                    {date.getDate()}
-                  </span>
-                  {isAdmin && (
-                    <span
-                      className="no-print hidden size-5 place-items-center rounded-full text-xs muted transition group-hover:grid hover:bg-[var(--surface)]"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCreate(date)
-                      }}
-                      role="button"
-                      tabIndex={-1}
-                      aria-hidden
-                      title="New event on this day"
-                    >
-                      +
-                    </span>
-                  )}
+                  {narrow ? `+${extra}` : `${extra} more`}
                 </button>
-
-                <div className="mt-0.5 hidden space-y-0.5 sm:block">
-                  {/* Two treatments, the way every calendar does it: an
-                      all-day event is a solid bar of its colour, a timed one
-                      is a solid dot beside plain text. A uniform pale tint
-                      for both made the colour almost impossible to read at
-                      chip size — which is the whole point of setting it. */}
-                  {list.slice(0, 3).map((instance) => {
-                    const status = statusOf(instance.event, instance.start, userId)
-                    return (
-                      <button
-                        key={instance.id}
-                        type="button"
-                        data-ec={colorOf(instance.event)}
-                        onClick={(e) => {
-                          onSelect(key)
-                          onOpen(instance, e.currentTarget.getBoundingClientRect())
-                        }}
-                        title={`${instance.event.title} — ${
-                          instance.allDay ? 'time TBA' : shortTime(instance.start)
-                        }`}
-                        className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition ${
-                          instance.allDay
-                            ? 'ec-solid hover:brightness-110'
-                            : 'hover:bg-[var(--surface)]'
-                        } ${status === 'past' ? 'ec-past' : ''}`}
-                      >
-                        {!instance.allDay && (
-                          <span className="ec-dot size-1.5 shrink-0 rounded-full" aria-hidden />
-                        )}
-                        {status === 'going' && <span aria-hidden>✓</span>}
-                        {!instance.allDay && (
-                          <span className="shrink-0 tabular-nums muted">
-                            {shortTime(instance.start)}
-                          </span>
-                        )}
-                        <span className={`truncate ${instance.allDay ? '' : 'font-semibold'}`}>
-                          {instance.event.title}
-                        </span>
-                      </button>
-                    )
-                  })}
-
-                  {list.length > 3 && (
-                    <button
-                      type="button"
-                      onClick={() => onMore(date)}
-                      className="w-full px-1 text-left text-[10px] font-semibold muted hover:underline"
-                    >
-                      +{list.length - 3} more
-                    </button>
-                  )}
-                </div>
-
-                {/* Phones get dots; three-word chips at that width are noise. */}
-                {list.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-0.5 sm:hidden">
-                    {list.slice(0, 5).map((instance) => (
-                      <span
-                        key={instance.id}
-                        data-ec={colorOf(instance.event)}
-                        className={`ec-dot size-1.5 rounded-full ${
-                          statusOf(instance.event, instance.start, userId) === 'past'
-                            ? 'opacity-40'
-                            : ''
-                        }`}
-                        aria-hidden
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
     </div>
+  )
+}
+
+/** One event in a month cell — or in the "N more" card. */
+export function Chip({
+  instance,
+  userId,
+  narrow = false,
+  height = 22,
+  onOpen,
+}: {
+  instance: Instance
+  userId: string | null
+  narrow?: boolean
+  height?: number
+  onOpen: (instance: Instance, rect: DOMRect) => void
+}) {
+  const status = statusOf(instance.event, instance.start, userId)
+  const going = status === 'going'
+  const past = status === 'past'
+  const bar = instance.allDay || narrow
+
+  return (
+    <button
+      type="button"
+      data-ec={colorOf(instance.event)}
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen(instance, e.currentTarget.getBoundingClientRect())
+      }}
+      title={`${instance.allDay ? '' : `${shortTime(instance.start)} `}${instance.event.title}`}
+      style={{ height: height - 2, marginBottom: 2 }}
+      className={`flex w-full min-w-0 items-center gap-1.5 rounded text-left transition ${
+        narrow ? 'px-0.5 text-[10px]' : 'px-1.5 text-xs'
+      } ${
+        bar
+          ? `${going || instance.allDay ? 'ec-solid' : 'ec-soft'} font-medium hover:brightness-105`
+          : 'hover:bg-[var(--surface-2)]'
+      } ${past ? 'ec-past' : ''}`}
+    >
+      {!bar && (
+        <span
+          className={`size-2 shrink-0 rounded-full ${going ? 'ec-dot' : 'ec-ring'}`}
+          aria-hidden
+        />
+      )}
+      {!bar && <span className="shrink-0 tabular-nums muted">{shortTime(instance.start)}</span>}
+      <span
+        className={`${narrow ? 'overflow-hidden whitespace-nowrap' : 'truncate'} ${bar ? '' : 'font-medium'}`}
+      >
+        {instance.event.title}
+      </span>
+    </button>
   )
 }

@@ -4,57 +4,49 @@ import MonthView from './calendar/MonthView'
 import TimeGrid from './calendar/TimeGrid'
 import AgendaView from './calendar/AgendaView'
 import EventPopover from './calendar/EventPopover'
+import DayPopover from './calendar/DayPopover'
 import ShortcutsDialog from './calendar/ShortcutsDialog'
 import CalendarSidebar, { type CalendarSettings } from './calendar/CalendarSidebar'
+import { Icon, IconButton } from './calendar/icons'
 import {
   BLANK_FILTERS,
   addDaysTo,
-  addMonths,
   dayKey,
   expand,
   filterEvents,
-  filterInstances,
-  filtersActive,
-  fromDayKey,
   groupByDay,
   instancesOf,
   monthCells,
   startOfDay,
-  startOfMonth,
-  statusOf,
   undated,
   weekDays,
   type CalendarEvent,
-  type CalendarFilters,
   type Instance,
   type ViewMode,
 } from '../lib/calendar'
+import { colorOf, type EventColorKey } from '../lib/eventColors'
 import { downloadIcs, icsForEvents } from '../lib/ics'
-import { nextOccurrence } from '../lib/format'
 
 export type { CalendarEvent } from '../lib/calendar'
 
-const VIEWS: [ViewMode, string, string][] = [
-  ['day', 'Day', 'D'],
-  ['week', 'Week', 'W'],
-  ['month', 'Month', 'M'],
-  ['agenda', 'Schedule', 'A'],
+const VIEWS: { key: ViewMode; label: string; hint: string }[] = [
+  { key: 'day', label: 'Day', hint: 'D' },
+  { key: 'week', label: 'Week', hint: 'W' },
+  { key: 'month', label: 'Month', hint: 'M' },
+  { key: 'agenda', label: 'Schedule', hint: 'A' },
 ]
 
-/** How far ahead the schedule view looks. A term, roughly. */
+/** How far ahead the Schedule view lists. */
 const AGENDA_DAYS = 120
 
-const DEFAULT_SETTINGS: CalendarSettings = {
-  weekStart: 0,
-  showWeekends: true,
-  showWeekNumbers: false,
-  workHours: [8, 18],
-}
+const DEFAULT_SETTINGS: CalendarSettings = { weekStart: 0, showWeekends: true }
 
-function loadJson<T>(key: string, fallback: T): T {
+function load<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key)
-    return raw ? { ...fallback, ...(JSON.parse(raw) as T) } : fallback
+    if (!raw) return fallback
+    const value = JSON.parse(raw) as T
+    return typeof fallback === 'object' && !Array.isArray(fallback) ? { ...fallback, ...value } : value
   } catch {
     return fallback
   }
@@ -62,20 +54,28 @@ function loadJson<T>(key: string, fallback: T): T {
 
 function save(key: string, value: unknown) {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value))
   } catch {
-    /* Private browsing. Losing a view preference is not worth an error. */
+    /* Private browsing — a lost view preference is not worth an error. */
   }
 }
 
+/** Same day of the month, n months away, clamped (Jan 31 + 1 → Feb 28). */
+function shiftMonths(date: Date, n: number) {
+  const target = new Date(date.getFullYear(), date.getMonth() + n, 1)
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(date.getDate(), last))
+  return target
+}
+
+const isPhone = () => window.innerWidth < 768
+
 /**
- * The club calendar.
+ * The club calendar, laid out and behaving like Google Calendar.
  *
- * Built on the three things that make a work calendar usable: one anchor
- * date that each view interprets its own way, filters that narrow rather
- * than navigate, and a click that answers your question in place instead
- * of taking you to another page. Everything below is assembly — the
- * arithmetic lives in `lib/calendar`.
+ * One date, `cursor`, anchors every view: month shows its month, week its
+ * week, day the day itself. Clicking an event opens a card in place;
+ * clicking an empty slot (officers) starts a new event there.
  */
 export default function EventCalendar({
   events,
@@ -89,91 +89,73 @@ export default function EventCalendar({
   onRsvp: (event: CalendarEvent, day: Date | null) => void
   busyId: string | null
   isAdmin?: boolean
-  /** Who is looking — decides which dates read as "you're in". */
   userId?: string | null
   clubName?: string
 }) {
   const navigate = useNavigate()
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const [view, setView] = useState<ViewMode>(
-    () => (localStorage.getItem('kc-cal-view') as ViewMode) || 'month',
-  )
+  const [view, setView] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('kc-cal-view') as ViewMode | null
+    return saved ?? (isPhone() ? 'agenda' : 'month')
+  })
   const [cursor, setCursor] = useState(() => startOfDay(new Date()))
-  const [selected, setSelected] = useState(() => dayKey(new Date()))
-  const [filters, setFilters] = useState<CalendarFilters>(() =>
-    loadJson('kc-cal-filters', BLANK_FILTERS),
-  )
-  const [settings, setSettings] = useState<CalendarSettings>(() =>
-    loadJson('kc-cal-settings', DEFAULT_SETTINGS),
-  )
+  const [hidden, setHidden] = useState<EventColorKey[]>(() => load('kc-cal-hidden', [] as EventColorKey[]))
+  const [settings, setSettings] = useState<CalendarSettings>(() => load('kc-cal-settings', DEFAULT_SETTINGS))
   const [sidebar, setSidebar] = useState(() => localStorage.getItem('kc-cal-rail') !== 'closed')
+  const [drawer, setDrawer] = useState(false)
+  const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [viewMenu, setViewMenu] = useState(false)
+  const [gearMenu, setGearMenu] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const [more, setMore] = useState<{ date: Date; rect: DOMRect } | null>(null)
   const [shortcuts, setShortcuts] = useState(false)
 
-  useEffect(() => localStorage.setItem('kc-cal-view', view), [view])
-  useEffect(() => save('kc-cal-filters', filters), [filters])
+  useEffect(() => save('kc-cal-view', view), [view])
+  useEffect(() => save('kc-cal-hidden', hidden), [hidden])
   useEffect(() => save('kc-cal-settings', settings), [settings])
-  useEffect(() => localStorage.setItem('kc-cal-rail', sidebar ? 'open' : 'closed'), [sidebar])
+  useEffect(() => save('kc-cal-rail', sidebar ? 'open' : 'closed'), [sidebar])
 
   // -------------------------------------------------------------------
   // What is on screen
   // -------------------------------------------------------------------
 
-  const filtered = useMemo(() => filterEvents(events, filters, userId), [events, filters, userId])
+  // Unticked calendars (colours) drop out; search narrows what is left.
+  const shownEvents = useMemo(
+    () =>
+      filterEvents(events, { ...BLANK_FILTERS, query }, userId).filter(
+        (e) => !hidden.includes(colorOf(e)),
+      ),
+    [events, query, userId, hidden],
+  )
 
   const days = useMemo(() => {
     if (view === 'week') return weekDays(cursor, settings.weekStart, settings.showWeekends)
-    if (view === 'day') return [fromDayKey(selected)]
+    if (view === 'day') return [cursor]
     return []
-  }, [view, cursor, selected, settings.weekStart, settings.showWeekends])
+  }, [view, cursor, settings.weekStart, settings.showWeekends])
 
   const [from, to] = useMemo((): [Date, Date] => {
     if (view === 'month') {
       const cells = monthCells(cursor, settings.weekStart)
       return [cells[0], cells[cells.length - 1]]
     }
-    if (view === 'agenda') {
-      const start = startOfDay(cursor)
-      return [start, addDaysTo(start, AGENDA_DAYS)]
-    }
-    const all = days.length > 0 ? days : [fromDayKey(selected)]
-    return [all[0], all[all.length - 1]]
-  }, [view, cursor, selected, days, settings.weekStart])
+    if (view === 'agenda') return [cursor, addDaysTo(cursor, AGENDA_DAYS)]
+    return [days[0], days[days.length - 1]]
+  }, [view, cursor, days, settings.weekStart])
 
-  const instances = useMemo(
-    () => filterInstances(expand(filtered, from, to), filters),
-    [filtered, from, to, filters],
-  )
-
+  const instances = useMemo(() => expand(shownEvents, from, to), [shownEvents, from, to])
   const byDay = useMemo(() => groupByDay(instances), [instances])
 
-  /**
-   * How much the filters are hiding right here.
-   *
-   * Filters persist between visits, so without this an officer who once
-   * clicked a colour comes back weeks later to a calendar that is quietly
-   * missing events — and reasonably concludes the events are broken rather
-   * than filtered.
-   */
-  const hidden = useMemo(
-    () => (filtersActive(filters) ? expand(events, from, to).length - instances.length : 0),
-    [events, from, to, instances, filters],
-  )
+  /** Search looks at every date, not just the visible range — as Google's does. */
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    return shownEvents.flatMap(instancesOf).sort((a, b) => a.start.getTime() - b.start.getTime())
+  }, [shownEvents, query])
 
-  /** Density dots in the mini month need the whole year, not this month. */
-  const counts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const event of filtered) {
-      for (const instance of instancesOf(event)) {
-        map.set(instance.key, (map.get(instance.key) ?? 0) + 1)
-      }
-    }
-    return map
-  }, [filtered])
-
-  /** Every instance by id, so an open popover survives a reload of the data. */
+  /** Every instance by id, so an open card survives a data reload. */
   const index = useMemo(() => {
     const map = new Map<string, Instance>()
     for (const event of events) for (const i of instancesOf(event)) map.set(i.id, i)
@@ -189,546 +171,388 @@ export default function EventCalendar({
   // Navigation
   // -------------------------------------------------------------------
 
-  const goToday = useCallback(() => {
-    const now = new Date()
-    setCursor(startOfDay(now))
-    setSelected(dayKey(now))
-  }, [])
+  const goToday = useCallback(() => setCursor(startOfDay(new Date())), [])
 
   const shift = useCallback(
-    (delta: number) => {
+    (delta: number) =>
       setCursor((c) => {
-        if (view === 'month') return addMonths(c, delta)
+        if (view === 'month') return shiftMonths(c, delta)
         if (view === 'week') return addDaysTo(c, delta * 7)
-        if (view === 'agenda') return addDaysTo(c, delta * 30)
+        if (view === 'agenda') return addDaysTo(c, delta * 7)
         return addDaysTo(c, delta)
-      })
-      if (view === 'day') setSelected((s) => dayKey(addDaysTo(fromDayKey(s), delta)))
-    },
+      }),
     [view],
   )
 
-  const selectDay = useCallback((key: string) => {
-    setSelected(key)
+  const showDay = useCallback((date: Date) => {
+    setCursor(startOfDay(date))
+    setView('day')
+    setMore(null)
     setOpenId(null)
   }, [])
 
-  const moveSelection = useCallback(
-    (step: number) => {
-      const next = addDaysTo(fromDayKey(selected), step)
-      setSelected(dayKey(next))
-      if (view === 'month') {
-        if (next.getMonth() !== cursor.getMonth()) setCursor(startOfMonth(next))
-      } else {
-        setCursor(next)
-      }
-    },
-    [selected, cursor, view],
-  )
-
-  const jumpTo = useCallback(
-    (date: Date) => {
-      setCursor(view === 'month' ? startOfMonth(date) : startOfDay(date))
-      setSelected(dayKey(date))
-      setOpenId(null)
-    },
-    [view],
-  )
+  const pick = useCallback((date: Date) => {
+    setCursor(startOfDay(date))
+    setDrawer(false)
+  }, [])
 
   const createOn = useCallback(
     (date: Date) => {
       const params = new URLSearchParams({ date: dayKey(date) })
-      if (date.getHours() !== 0) {
-        params.set('time', `${String(date.getHours()).padStart(2, '0')}:00`)
+      if (date.getHours() !== 0 || date.getMinutes() !== 0) {
+        const pad = (n: number) => String(n).padStart(2, '0')
+        params.set('time', `${pad(date.getHours())}:${pad(date.getMinutes())}`)
       }
       navigate(`/admin/posts/new?${params.toString()}`)
     },
     [navigate],
   )
 
-  // Keep the selected day inside the month being shown, so "the selected
-  // day" is always something you can actually see.
-  useEffect(() => {
-    if (view !== 'month') return
-    const sel = fromDayKey(selected)
-    if (sel.getMonth() !== cursor.getMonth() || sel.getFullYear() !== cursor.getFullYear()) {
-      const today = new Date()
-      const sameMonth =
-        today.getMonth() === cursor.getMonth() && today.getFullYear() === cursor.getFullYear()
-      setSelected(dayKey(sameMonth ? today : startOfMonth(cursor)))
-    }
-  }, [cursor, view, selected])
+  const changeView = (next: ViewMode) => {
+    setView(next)
+    setViewMenu(false)
+    setDrawer(false)
+  }
+
+  const closeSearch = () => {
+    setQuery('')
+    setSearching(false)
+  }
+
+  const openInstance = (instance: Instance, rect: DOMRect) => {
+    setAnchor(rect)
+    setOpenId(instance.id)
+  }
 
   // -------------------------------------------------------------------
-  // Keyboard
+  // Keyboard — Google Calendar's own shortcuts
   // -------------------------------------------------------------------
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement | null
-      const typing =
-        !!target &&
-        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-
-      if (typing) {
-        // Escape gets you out of the search box without touching the view.
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
         if (e.key === 'Escape') target.blur()
         return
       }
-
-      // Inside the month grid, the arrows belong to the grid.
-      const inGrid = !!target?.closest('[role="grid"]')
-
-      switch (e.key) {
-        case 't':
-        case 'T':
-          goToday()
-          break
-        case 'd':
-        case 'D':
-          setView('day')
-          break
-        case 'w':
-        case 'W':
-          setView('week')
-          break
-        case 'm':
-        case 'M':
-          setView('month')
-          break
-        case 'a':
-        case 'A':
-          setView('agenda')
-          break
-        case 'n':
-          shift(1)
-          break
-        case 'p':
-          shift(-1)
-          break
-        case 'ArrowRight':
-          if (inGrid) return
-          shift(1)
-          break
-        case 'ArrowLeft':
-          if (inGrid) return
-          shift(-1)
-          break
-        case 'f':
-        case 'F':
-          setSidebar((s) => !s)
-          break
-        case 'c':
-        case 'C':
-          if (isAdmin) createOn(fromDayKey(selected))
-          break
-        case '/':
-          e.preventDefault()
-          searchRef.current?.focus()
-          break
-        case '?':
-          setShortcuts(true)
-          break
-        case 'Escape':
-          setOpenId(null)
-          setShortcuts(false)
-          break
-        default:
-          return
-      }
+      const views: Record<string, ViewMode> = { d: 'day', 1: 'day', w: 'week', 2: 'week', m: 'month', 3: 'month', a: 'agenda', 4: 'agenda' }
+      const key = e.key.toLowerCase()
+      if (key in views) setView(views[key])
+      else if (key === 't') goToday()
+      else if (key === 'j' || key === 'n') shift(1)
+      else if (key === 'k' || key === 'p') shift(-1)
+      else if (key === 'c' && isAdmin) createOn(cursor)
+      else if (key === '/') {
+        e.preventDefault()
+        setSearching(true)
+        setTimeout(() => searchRef.current?.focus(), 0)
+      } else if (e.key === '?') setShortcuts(true)
+      else if (e.key === 'Escape') {
+        setOpenId(null)
+        setMore(null)
+        setShortcuts(false)
+      } else return
     }
-
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [goToday, shift, isAdmin, createOn, selected])
+  }, [goToday, shift, isAdmin, createOn, cursor])
+
+  // Swipe sideways on a phone to page, like the Google Calendar app.
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  const onTouchStart = (e: React.TouchEvent) => {
+    touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touch.current
+    touch.current = null
+    if (!start || view === 'agenda' || query) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) shift(dx < 0 ? 1 : -1)
+  }
 
   // -------------------------------------------------------------------
-  // Header
+  // Header text
   // -------------------------------------------------------------------
 
   const title = useMemo(() => {
-    if (view === 'month')
+    if (view === 'month' || view === 'agenda')
       return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-
     if (view === 'day')
-      return fromDayKey(selected).toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+      return cursor.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+    const first = days[0]
+    const last = days[days.length - 1]
+    if (first.getMonth() === last.getMonth())
+      return first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    const sameYear = first.getFullYear() === last.getFullYear()
+    return `${first.toLocaleDateString(undefined, { month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })} – ${last.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`
+  }, [view, cursor, days])
 
-    if (view === 'agenda')
-      return `${from.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-      })} – ${to.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })}`
-
-    const first = days[0] ?? from
-    const last = days[days.length - 1] ?? to
-    const sameMonth = first.getMonth() === last.getMonth()
-    return `${first.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    })} – ${last.toLocaleDateString(
-      undefined,
-      sameMonth
-        ? { day: 'numeric', year: 'numeric' }
-        : { month: 'short', day: 'numeric', year: 'numeric' },
-    )}`
-  }, [view, cursor, selected, days, from, to])
-
-  const summary = useMemo(() => {
-    const seen = new Set(instances.map((i) => i.event.id))
-    const list = filtered.filter((e) => seen.has(e.id))
-    if (list.length === 0) return 'Nothing scheduled here'
-    const mine = list.filter((e) =>
-      userId ? e.signups.some((s) => s.user_id === userId) : e.mine,
-    ).length
-    const openCount = list.filter((e) => statusOf(e, null, userId) === 'open').length
-    return [
-      `${list.length} event${list.length === 1 ? '' : 's'}`,
-      mine ? `you’re in ${mine}` : '',
-      openCount ? `${openCount} open` : '',
-    ]
-      .filter(Boolean)
-      .join(' · ')
-  }, [instances, filtered, userId])
-
-  const nextUp = useMemo(() => {
-    const dated = filtered
-      .map((e) => ({ event: e, when: nextOccurrence(e) }))
-      .filter((x): x is { event: CalendarEvent; when: Date } => x.when !== null)
-    return dated.sort((a, b) => a.when.getTime() - b.when.getTime())[0] ?? null
-  }, [filtered])
-
-  const selectedList = byDay.get(selected) ?? []
-  const noDate = useMemo(() => undated(filtered), [filtered])
-
-  function openInstance(instance: Instance, rect: DOMRect) {
-    setAnchor(rect)
-    setOpenId(instance.id)
-  }
+  const noDate = useMemo(() => undated(shownEvents), [shownEvents])
 
   function exportAll() {
     downloadIcs(
       `${clubName.toLowerCase().replace(/\s+/g, '-')}-calendar`,
-      icsForEvents(filtered, `${clubName} calendar`),
+      icsForEvents(shownEvents, `${clubName} calendar`),
     )
   }
+
+  const toggleColor = (key: EventColorKey) =>
+    setHidden((h) => (h.includes(key) ? h.filter((k) => k !== key) : [...h, key]))
+
+  const sidebarProps = {
+    cursor,
+    selected: dayKey(cursor),
+    weekStart: settings.weekStart,
+    events,
+    hidden,
+    isAdmin,
+    onCreate: () => createOn(cursor),
+    onPick: pick,
+    onToggle: toggleColor,
+    onExport: exportAll,
+  }
+
+  const currentView = VIEWS.find((v) => v.key === view)!
 
   // -------------------------------------------------------------------
 
   return (
-    <div className={`grid gap-6 ${sidebar ? 'lg:grid-cols-[17rem_minmax(0,1fr)]' : ''}`}>
-      {sidebar && (
-        <aside className="no-print order-2 lg:order-1">
-          <CalendarSidebar
-            cursor={cursor}
-            selected={selected}
-            counts={counts}
-            events={events}
-            filters={filters}
-            settings={settings}
-            onPick={jumpTo}
-            onFilters={setFilters}
-            onSettings={setSettings}
-            onExport={exportAll}
-          />
-        </aside>
-      )}
-
-      <div className="order-1 min-w-0 lg:order-2">
-        {/* Toolbar */}
-        <div className="no-print mb-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setSidebar((s) => !s)}
-            className="btn btn-ghost px-2.5 py-1.5"
-            aria-label={sidebar ? 'Hide the sidebar' : 'Show the sidebar'}
-            title="Sidebar (F)"
-          >
-            ☰
-          </button>
-
-          <button type="button" onClick={goToday} className="btn btn-ghost py-1.5 text-sm">
-            Today
-          </button>
-
-          <div className="flex items-center">
-            <button
-              type="button"
-              onClick={() => shift(-1)}
-              className="grid size-8 place-items-center rounded-lg transition hover:bg-[var(--surface)]"
-              aria-label="Previous"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => shift(1)}
-              className="grid size-8 place-items-center rounded-lg transition hover:bg-[var(--surface)]"
-              aria-label="Next"
-            >
-              ›
-            </button>
-          </div>
-
-          <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold sm:text-xl">
-            {title}
-          </h2>
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <label className="relative">
-              <span className="sr-only">Search events</span>
+    <div className="flex h-full min-h-0 flex-col bg-[var(--card)]">
+      {/* ---------------- Top bar ---------------- */}
+      <header className="flex h-16 shrink-0 items-center gap-1 border-b border-[var(--line)] px-2 sm:gap-2 sm:px-3">
+        {searching ? (
+          <>
+            <IconButton icon="left" label="Back" onClick={closeSearch} />
+            <label className="flex h-11 flex-1 items-center gap-2 rounded-lg bg-[var(--surface-2)] px-3">
+              <Icon name="search" className="size-5 muted" />
               <input
                 ref={searchRef}
                 type="search"
-                value={filters.query}
-                onChange={(e) => setFilters({ ...filters, query: e.target.value })}
-                placeholder="Search  /"
-                className="field w-40 py-1.5 pl-8 sm:w-56"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search events"
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                autoFocus
               />
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm muted">
-                🔍
-              </span>
+              {query && <IconButton icon="close" label="Clear search" size="size-8" onClick={() => setQuery('')} />}
             </label>
-
-            <div className="inline-flex rounded-xl border border-[var(--line)] p-0.5">
-              {VIEWS.map(([key, label, hint]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setView(key)}
-                  aria-pressed={view === key}
-                  title={`${label} (${hint})`}
-                  className={`rounded-lg px-2.5 py-1 text-sm font-medium transition sm:px-3 ${
-                    view === key ? 'bg-navy-600 text-white' : 'muted hover:text-[var(--ink)]'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          </>
+        ) : (
+          <>
+            <IconButton
+              icon="menu"
+              label="Main menu"
+              onClick={() => (isPhone() ? setDrawer(true) : setSidebar((s) => !s))}
+            />
+            <button
+              type="button"
+              onClick={goToday}
+              className="ml-1 hidden h-9 items-center rounded-full border border-[var(--line-strong)] px-4 text-sm font-medium transition hover:bg-[var(--surface-2)] md:flex"
+            >
+              Today
+            </button>
+            <div className="hidden items-center md:flex">
+              <IconButton icon="left" label={`Previous ${currentView.label.toLowerCase()}`} onClick={() => shift(-1)} />
+              <IconButton icon="right" label={`Next ${currentView.label.toLowerCase()}`} onClick={() => shift(1)} />
             </div>
+            <h2 className="ml-1 min-w-0 truncate text-lg sm:text-[1.375rem]">{title}</h2>
 
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => createOn(fromDayKey(selected))}
-                className="btn btn-primary py-1.5 text-sm"
-                title="New event (C)"
-              >
-                + Event
-              </button>
-            )}
+            <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
+              <IconButton
+                icon="search"
+                label="Search"
+                onClick={() => {
+                  setSearching(true)
+                  setTimeout(() => searchRef.current?.focus(), 0)
+                }}
+              />
+              <IconButton icon="today" label="Today" onClick={goToday} className="md:hidden" />
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="btn btn-ghost px-2.5 py-1.5"
-              title="Print this view"
-              aria-label="Print"
-            >
-              🖨
-            </button>
+              <div className="relative hidden md:block">
+                <IconButton icon="gear" label="Settings" onClick={() => setGearMenu((g) => !g)} />
+                {gearMenu && (
+                  <Menu onClose={() => setGearMenu(false)} className="w-60 p-3 text-sm">
+                    <label className="flex items-center justify-between gap-3 py-1.5">
+                      Week starts on
+                      <select
+                        className="field w-28 py-1"
+                        value={settings.weekStart}
+                        onChange={(e) => setSettings({ ...settings, weekStart: Number(e.target.value) })}
+                      >
+                        <option value={0}>Sunday</option>
+                        <option value={1}>Monday</option>
+                      </select>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 py-1.5">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={settings.showWeekends}
+                        onChange={(e) => setSettings({ ...settings, showWeekends: e.target.checked })}
+                      />
+                      Show weekends in week view
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGearMenu(false)
+                        setShortcuts(true)
+                      }}
+                      className="mt-1 w-full rounded-lg py-1.5 text-left hover:underline"
+                    >
+                      Keyboard shortcuts <span className="kbd ml-1">?</span>
+                    </button>
+                  </Menu>
+                )}
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setShortcuts(true)}
-              className="btn btn-ghost px-2.5 py-1.5"
-              title="Keyboard shortcuts (?)"
-              aria-label="Keyboard shortcuts"
-            >
-              ?
-            </button>
-          </div>
-        </div>
+              <div className="relative hidden md:block">
+                <button
+                  type="button"
+                  onClick={() => setViewMenu((v) => !v)}
+                  className="flex h-9 items-center gap-1 rounded-full border border-[var(--line-strong)] pl-4 pr-2 text-sm font-medium transition hover:bg-[var(--surface-2)]"
+                  aria-haspopup="menu"
+                  aria-expanded={viewMenu}
+                >
+                  {currentView.label}
+                  <Icon name="down" />
+                </button>
+                {viewMenu && (
+                  <Menu onClose={() => setViewMenu(false)} className="w-44 py-2">
+                    {VIEWS.map((v) => (
+                      <button
+                        key={v.key}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => changeView(v.key)}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-[var(--surface-2)] ${
+                          v.key === view ? 'bg-[var(--surface-2)] font-medium' : ''
+                        }`}
+                      >
+                        {v.label}
+                        <span className="text-xs muted">{v.hint}</span>
+                      </button>
+                    ))}
+                  </Menu>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </header>
 
-        {filtersActive(filters) && (
-          <div className="no-print mb-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="muted">Filtered:</span>
-            {filters.query.trim() && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">
-                “{filters.query.trim()}”
-              </span>
-            )}
-            {filters.colors.length > 0 && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">
-                {filters.colors.length} colour{filters.colors.length === 1 ? '' : 's'}
-              </span>
-            )}
-            {filters.mineOnly && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">Mine only</span>
-            )}
-            {filters.openOnly && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">Open sign-ups</span>
-            )}
-            {filters.hoursOnly && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">Service hours</span>
-            )}
-            {filters.hidePast && (
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1">Upcoming only</span>
-            )}
-            <button
-              type="button"
-              onClick={() => setFilters(BLANK_FILTERS)}
-              className="font-semibold text-navy-600 hover:underline dark:text-navy-200"
-            >
-              Clear
-            </button>
-          </div>
+      <div className="flex min-h-0 flex-1">
+        {/* ---------------- Sidebar (desktop) ---------------- */}
+        {sidebar && (
+          <aside className="hidden w-64 shrink-0 pl-3 pt-3 md:block">
+            <CalendarSidebar {...sidebarProps} />
+          </aside>
         )}
 
-        <div className="card overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-4 py-2 text-xs muted">
-            <span>
-              {summary}
-              {hidden > 0 && (
-                <>
-                  {' · '}
-                  <span className="font-semibold text-gold-600 dark:text-gold-300">
-                    {hidden} hidden by filters
-                  </span>{' '}
-                  <button
-                    type="button"
-                    onClick={() => setFilters(BLANK_FILTERS)}
-                    className="no-print font-semibold text-navy-600 hover:underline dark:text-navy-200"
-                  >
-                    Show everything
-                  </button>
-                </>
-              )}
-            </span>
-            <span className="no-print hidden sm:inline">
-              Press <span className="kbd">?</span> for shortcuts
-            </span>
-          </div>
-
-          {view === 'month' && (
+        {/* ---------------- The view ---------------- */}
+        <main
+          className={`min-h-0 min-w-0 flex-1 ${sidebar ? 'md:border-l md:border-[var(--line)]' : ''}`}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {query.trim() ? (
+            <AgendaView
+              instances={results}
+              userId={userId}
+              onOpen={openInstance}
+              empty={`No events match “${query.trim()}”`}
+            />
+          ) : view === 'month' ? (
             <MonthView
               cursor={cursor}
               weekStart={settings.weekStart}
-              selected={selected}
               byDay={byDay}
               userId={userId}
               isAdmin={isAdmin}
-              showWeekNumbers={settings.showWeekNumbers}
-              onSelect={selectDay}
-              onNavigate={moveSelection}
               onOpen={openInstance}
-              onMore={(date) => {
-                setSelected(dayKey(date))
-                setView('day')
-              }}
+              onDay={showDay}
+              onMore={(date, rect) => setMore({ date, rect })}
               onCreate={createOn}
             />
-          )}
-
-          {(view === 'week' || view === 'day') && (
-            <TimeGrid
-              days={days}
-              byDay={byDay}
-              userId={userId}
-              isAdmin={isAdmin}
-              selected={selected}
-              workHours={settings.workHours}
-              onSelect={selectDay}
-              onOpen={openInstance}
-              onCreate={createOn}
-            />
-          )}
-
-          {view === 'agenda' && (
+          ) : view === 'agenda' ? (
             <AgendaView
               instances={instances}
               undatedEvents={noDate}
               userId={userId}
               onOpen={openInstance}
-              rangeLabel="in the next few months"
+              empty="Nothing scheduled in the next few months"
+            />
+          ) : (
+            <TimeGrid
+              days={days}
+              byDay={byDay}
+              userId={userId}
+              isAdmin={isAdmin}
+              onOpen={openInstance}
+              onDay={showDay}
+              onCreate={createOn}
             />
           )}
-        </div>
-
-        {instances.length === 0 && nextUp && view !== 'agenda' && (
-          <div className="no-print mt-4 text-center">
-            <button
-              type="button"
-              className="btn btn-ghost text-sm"
-              onClick={() => jumpTo(nextUp.when)}
-            >
-              Jump to the next event →{' '}
-              {nextUp.when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-            </button>
-          </div>
-        )}
-
-        {/* The selected day, spelled out under the month grid: the grid
-            answers "when", this answers "what, exactly". */}
-        {view === 'month' && (
-          <section className="mt-6">
-            <h3 className="mb-3 font-[family-name:var(--font-display)] text-lg font-semibold">
-              {fromDayKey(selected).toLocaleDateString(undefined, {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </h3>
-
-            {selectedList.length === 0 ? (
-              <div className="card px-5 py-6 text-sm muted">
-                Nothing scheduled this day.
-                {isAdmin && (
-                  <>
-                    {' '}
-                    <button
-                      type="button"
-                      onClick={() => createOn(fromDayKey(selected))}
-                      className="font-semibold underline"
-                    >
-                      Add an event
-                    </button>
-                    .
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="card overflow-hidden">
-                <AgendaView
-                  instances={selectedList}
-                  undatedEvents={[]}
-                  userId={userId}
-                  onOpen={openInstance}
-                  rangeLabel="this day"
-                  showHeaders={false}
-                />
-              </div>
-            )}
-          </section>
-        )}
-
-        {view !== 'agenda' && noDate.length > 0 && (
-          <section className="mt-8">
-            <h3 className="mb-3 font-[family-name:var(--font-display)] text-lg font-semibold">
-              No date set yet
-            </h3>
-            <div className="card overflow-hidden">
-              <AgendaView
-                instances={[]}
-                undatedEvents={noDate}
-                userId={userId}
-                onOpen={openInstance}
-                rangeLabel="without a date"
-                showHeaders={false}
-              />
-            </div>
-          </section>
-        )}
+        </main>
       </div>
+
+      {/* ---------------- Phone drawer ---------------- */}
+      {drawer && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40 md:hidden" onClick={() => setDrawer(false)} aria-hidden />
+          <aside className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-[var(--card)] shadow-[var(--shadow-lg)] md:hidden">
+            <p className="px-5 pb-2 pt-5 text-lg font-medium">Calendar</p>
+            <nav className="border-b border-[var(--line)] pb-2">
+              {[...VIEWS].reverse().map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => changeView(v.key)}
+                  className={`mr-3 flex w-[calc(100%-0.75rem)] items-center rounded-r-full px-5 py-3 text-left text-sm font-medium ${
+                    v.key === view
+                      ? 'bg-navy-100 text-navy-800 dark:bg-navy-700 dark:text-navy-50'
+                      : 'hover:bg-[var(--surface-2)]'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </nav>
+            <div className="min-h-0 flex-1 pl-3 pt-3">
+              <CalendarSidebar {...sidebarProps} isAdmin={false} />
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Phone create button, above the tab bar. */}
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => createOn(cursor)}
+          aria-label="Create event"
+          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 grid size-14 place-items-center rounded-2xl bg-[var(--card)] text-navy-600 shadow-[0_2px_6px_rgb(0_0_0/0.25),0_8px_20px_rgb(0_0_0/0.15)] md:hidden dark:text-gold-300"
+        >
+          <Icon name="plus" className="size-7" />
+        </button>
+      )}
+
+      {more && (
+        <DayPopover
+          date={more.date}
+          list={byDay.get(dayKey(more.date)) ?? []}
+          anchor={more.rect}
+          userId={userId}
+          onOpen={(instance, rect) => {
+            setMore(null)
+            openInstance(instance, rect)
+          }}
+          onDay={showDay}
+          onClose={() => setMore(null)}
+        />
+      )}
 
       {open && anchor && (
         <EventPopover
@@ -743,6 +567,31 @@ export default function EventCalendar({
       )}
 
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
+    </div>
+  )
+}
+
+/** A dropdown under a top-bar button; closes on any outside click. */
+function Menu({
+  onClose,
+  className = '',
+  children,
+}: {
+  onClose: () => void
+  className?: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.parentElement?.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [onClose])
+  return (
+    <div ref={ref} role="menu" className={`cal-popover absolute right-0 top-11 z-40 ${className}`}>
+      {children}
     </div>
   )
 }

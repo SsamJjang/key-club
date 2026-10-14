@@ -13,7 +13,7 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
   const photos = useMemo(() => (compact ? [] : bodyImages(post.body)), [post.body, compact])
 
   return (
-    <article className="card group overflow-hidden transition hover:border-navy-300 dark:hover:border-navy-600">
+    <article className="card group overflow-hidden transition hover:-translate-y-0.5 hover:border-navy-300 dark:hover:border-navy-600">
       <Link to={`/post/${post.slug}`} className="block">
         {!compact && (post.cover_url || photos.length > 0) && (
           <div className="relative">
@@ -65,7 +65,7 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
             )}
           </div>
 
-          <h3 className="mt-3 font-[family-name:var(--font-display)] text-lg font-semibold leading-snug tracking-tight transition group-hover:text-navy-600 dark:group-hover:text-navy-200">
+          <h3 className="display mt-3 text-[1.35rem] leading-tight transition group-hover:text-navy-600 dark:group-hover:text-navy-200">
             {post.title}
           </h3>
 

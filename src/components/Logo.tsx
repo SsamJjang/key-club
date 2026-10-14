@@ -49,7 +49,7 @@ export function LogoWordmark({
   return (
     <span className="flex items-center gap-2.5">
       <Logo size={size} tone={tone} />
-      <span className="font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight">
+      <span className="display text-xl">
         Key Club
       </span>
     </span>
