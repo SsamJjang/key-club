@@ -42,16 +42,30 @@ export default function PostEditor() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
 
-  const [form, setForm] = useState(BLANK)
-  // Clicking an empty day or hour on the calendar lands here with the slot
-  // already filled in, which is the difference between "add an event" being
-  // a chore and being a click.
+  // "More options" on the calendar's quick-create card lands here with what
+  // was already typed — title, day, start and end — carried over.
+  const [form, setForm] = useState(() => {
+    if (!isNew) return BLANK
+    const title = params.get('title') ?? ''
+    const color = params.get('color')
+    return {
+      ...BLANK,
+      title,
+      slug: title ? slugify(title) : '',
+      location: params.get('location') ?? '',
+      summary: params.get('summary') ?? '',
+      service_hours: params.get('hours') ?? '',
+      capacity: params.get('capacity') ?? '',
+      color: isColorKey(color) ? color : null,
+    }
+  })
   const [schedule, setSchedule] = useState<ScheduleForm>(() =>
     isNew
       ? {
           ...BLANK_SCHEDULE,
           start_date: params.get('date') ?? '',
           start_time: params.get('time') ?? '',
+          end_time: params.get('end') ?? '',
         }
       : BLANK_SCHEDULE,
   )

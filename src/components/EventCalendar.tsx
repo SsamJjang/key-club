@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import MonthView from './calendar/MonthView'
 import TimeGrid from './calendar/TimeGrid'
 import AgendaView from './calendar/AgendaView'
@@ -7,6 +6,7 @@ import EventPopover from './calendar/EventPopover'
 import DayPopover from './calendar/DayPopover'
 import ShortcutsDialog from './calendar/ShortcutsDialog'
 import CalendarSidebar, { type CalendarSettings } from './calendar/CalendarSidebar'
+import QuickCreate, { type Draft } from './calendar/QuickCreate'
 import { Icon, IconButton } from './calendar/icons'
 import {
   BLANK_FILTERS,
@@ -84,15 +84,17 @@ export default function EventCalendar({
   isAdmin = false,
   userId = null,
   clubName = 'Key Club',
+  onCreated,
 }: {
   events: CalendarEvent[]
   onRsvp: (event: CalendarEvent, day: Date | null) => void
+  /** An event was saved from the quick-create card: reload. */
+  onCreated?: () => void
   busyId: string | null
   isAdmin?: boolean
   userId?: string | null
   clubName?: string
 }) {
-  const navigate = useNavigate()
   const searchRef = useRef<HTMLInputElement>(null)
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -112,6 +114,7 @@ export default function EventCalendar({
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   const [more, setMore] = useState<{ date: Date; rect: DOMRect } | null>(null)
   const [shortcuts, setShortcuts] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
 
   useEffect(() => save('kc-cal-view', view), [view])
   useEffect(() => save('kc-cal-hidden', hidden), [hidden])
@@ -196,17 +199,30 @@ export default function EventCalendar({
     setDrawer(false)
   }, [])
 
-  const createOn = useCallback(
-    (date: Date) => {
-      const params = new URLSearchParams({ date: dayKey(date) })
-      if (date.getHours() !== 0 || date.getMinutes() !== 0) {
-        const pad = (n: number) => String(n).padStart(2, '0')
-        params.set('time', `${pad(date.getHours())}:${pad(date.getMinutes())}`)
-      }
-      navigate(`/admin/posts/new?${params.toString()}`)
+  /**
+   * Opens Google's quick "add event" card. A time-grid slot gives a timed
+   * hour; a month cell gives an all-day event; Create / C with no slot
+   * starts on the shown day at the next whole hour, centred on screen.
+   */
+  const startDraft = useCallback(
+    (at: Date, anchor: DOMRect | null, allDay: boolean) => {
+      if (!isAdmin) return
+      setOpenId(null)
+      setMore(null)
+      const end = new Date(at)
+      end.setHours(end.getHours() + 1)
+      setDraft({ start: at, end, allDay, title: '', color: null, anchor })
     },
-    [navigate],
+    [isAdmin],
   )
+
+  const createNow = useCallback(() => {
+    const at = new Date(cursor)
+    const now = new Date()
+    at.setHours(now.getHours() + 1, 0, 0, 0)
+    setDrawer(false)
+    startDraft(at, null, false)
+  }, [cursor, startDraft])
 
   const changeView = (next: ViewMode) => {
     setView(next)
@@ -242,7 +258,7 @@ export default function EventCalendar({
       else if (key === 't') goToday()
       else if (key === 'j' || key === 'n') shift(1)
       else if (key === 'k' || key === 'p') shift(-1)
-      else if (key === 'c' && isAdmin) createOn(cursor)
+      else if (key === 'c' && isAdmin) createNow()
       else if (key === '/') {
         e.preventDefault()
         setSearching(true)
@@ -251,12 +267,13 @@ export default function EventCalendar({
       else if (e.key === 'Escape') {
         setOpenId(null)
         setMore(null)
+        setDraft(null)
         setShortcuts(false)
       } else return
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [goToday, shift, isAdmin, createOn, cursor])
+  }, [goToday, shift, isAdmin, createNow])
 
   // Swipe sideways on a phone to page, like the Google Calendar app.
   const touch = useRef<{ x: number; y: number } | null>(null)
@@ -308,7 +325,7 @@ export default function EventCalendar({
     events,
     hidden,
     isAdmin,
-    onCreate: () => createOn(cursor),
+    onCreate: createNow,
     onPick: pick,
     onToggle: toggleColor,
     onExport: exportAll,
@@ -474,7 +491,8 @@ export default function EventCalendar({
               onOpen={openInstance}
               onDay={showDay}
               onMore={(date, rect) => setMore({ date, rect })}
-              onCreate={createOn}
+              onCreate={(date, rect) => startDraft(date, rect, true)}
+              draft={draft}
             />
           ) : view === 'agenda' ? (
             <AgendaView
@@ -492,7 +510,8 @@ export default function EventCalendar({
               isAdmin={isAdmin}
               onOpen={openInstance}
               onDay={showDay}
-              onCreate={createOn}
+              onCreate={(at, rect) => startDraft(at, rect, false)}
+              draft={draft}
             />
           )}
         </main>
@@ -531,7 +550,7 @@ export default function EventCalendar({
       {isAdmin && (
         <button
           type="button"
-          onClick={() => createOn(cursor)}
+          onClick={createNow}
           aria-label="Create event"
           className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 grid size-14 place-items-center rounded-2xl bg-[var(--card)] text-navy-600 shadow-[0_2px_6px_rgb(0_0_0/0.25),0_8px_20px_rgb(0_0_0/0.15)] md:hidden dark:text-gold-300"
         >
@@ -563,6 +582,19 @@ export default function EventCalendar({
           busy={busyId === open.event.id}
           onRsvp={(instance) => onRsvp(instance.event, instance.start)}
           onClose={() => setOpenId(null)}
+        />
+      )}
+
+      {draft && (
+        <QuickCreate
+          draft={draft}
+          userId={userId}
+          onChange={setDraft}
+          onClose={() => setDraft(null)}
+          onSaved={() => {
+            setDraft(null)
+            onCreated?.()
+          }}
         />
       )}
 

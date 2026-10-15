@@ -13,6 +13,7 @@ import {
   statusOf,
 } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
+import type { Draft } from './QuickCreate'
 
 const DAY_PX = 24 * HOUR_PX
 const GUTTER = '4rem'
@@ -38,6 +39,7 @@ export default function TimeGrid({
   onOpen,
   onDay,
   onCreate,
+  draft = null,
 }: {
   days: Date[]
   byDay: Map<string, Instance[]>
@@ -45,7 +47,9 @@ export default function TimeGrid({
   isAdmin: boolean
   onOpen: (instance: Instance, rect: DOMRect) => void
   onDay: (date: Date) => void
-  onCreate: (date: Date) => void
+  onCreate: (date: Date, rect: DOMRect) => void
+  /** The unsaved event the quick-create card is editing. */
+  draft?: Draft | null
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -88,7 +92,8 @@ export default function TimeGrid({
     const halfHours = Math.floor(y / (HOUR_PX / 2))
     const at = new Date(date)
     at.setHours(Math.floor(halfHours / 2), (halfHours % 2) * 30, 0, 0)
-    onCreate(at)
+    const col = e.currentTarget.getBoundingClientRect()
+    onCreate(at, new DOMRect(col.left, col.top + halfHours * (HOUR_PX / 2), col.width, HOUR_PX))
   }
 
   return (
@@ -134,6 +139,14 @@ export default function TimeGrid({
           const list = (byDay.get(dayKey(date)) ?? []).filter((i) => i.allDay)
           return (
             <div key={dayKey(date)} className="min-h-6 min-w-0 border-l border-[var(--line)] px-0.5 pb-1 pt-1">
+              {draft?.allDay && sameDay(draft.start, date) && (
+                <div
+                  data-ec={draft.color ?? 'peacock'}
+                  className="ec-solid mb-0.5 flex h-5 items-center truncate rounded px-1.5 text-xs font-medium shadow"
+                >
+                  {draft.title || '(No title)'}
+                </div>
+              )}
               {list.map((instance) => {
                 const status = statusOf(instance.event, instance.start, userId)
                 return (
@@ -190,6 +203,24 @@ export default function TimeGrid({
                     style={{ top: now * DAY_PX }}
                     aria-hidden
                   />
+                )}
+
+                {draft && !draft.allDay && sameDay(draft.start, date) && (
+                  <div
+                    data-ec={draft.color ?? 'peacock'}
+                    className="ec-solid pointer-events-none absolute z-30 overflow-hidden rounded-md px-1.5 py-1 text-xs leading-tight shadow-lg"
+                    style={{
+                      top: ((draft.start.getHours() * 60 + draft.start.getMinutes()) / 1440) * DAY_PX + 1,
+                      height: Math.max(20, ((draft.end.getTime() - draft.start.getTime()) / 864e5) * DAY_PX - 2),
+                      left: 1,
+                      right: 8,
+                    }}
+                  >
+                    <span className="block truncate font-medium">{draft.title || '(No title)'}</span>
+                    <span className="block truncate opacity-90">
+                      {shortTime(draft.start)} – {shortTime(draft.end)}
+                    </span>
+                  </div>
                 )}
 
                 {placed.map(({ instance, left, width, top, height }) => {

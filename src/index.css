@@ -27,7 +27,7 @@
 
 /* --surface is the page, --card anything that sits on it, --surface-2 a
    recessed well (segmented controls, hover fills). --gold is the crest gold
-   as a fill; .navy-stage the always-navy hero panel. */
+   as a fill. */
 :root {
   --surface: #f3f5f9;
   --card: #ffffff;
@@ -56,24 +56,6 @@ html.dark {
   --shadow: 0 1px 0 rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / 0.8);
   color-scheme: dark;
-}
-
-/* Crest gold as text. */
-.gold-text {
-  background: var(--gold);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* The navy stage for the home hero and the sign-in poster: always navy with
-   light text, in both themes. */
-.navy-stage {
-  background:
-    radial-gradient(120% 90% at 0% 0%, rgb(255 255 255 / 0.09), transparent 55%),
-    radial-gradient(60% 80% at 100% 100%, rgb(229 173 44 / 0.14), transparent 60%),
-    linear-gradient(160deg, #1e4a89 0%, #142e55 55%, #08152a 100%);
-  color: #f3f6fb;
 }
 
 /* Big serif headlines. Unlayered so its leading wins over a text-5xl
@@ -294,15 +276,6 @@ html.dark {
     border-color: var(--ink);
   }
 
-  /* Outlined, for sitting on the navy stage. */
-  .btn-on-stage {
-    border-color: rgb(255 255 255 / 0.3);
-    color: #fff;
-  }
-
-  .btn-on-stage:hover:not(:disabled) {
-    border-color: #fff;
-  }
 
   .btn-danger {
     background: transparent;

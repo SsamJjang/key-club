@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Instance } from '../../lib/calendar'
 import { WEEKDAY_SHORT, dayKey, isToday, monthCells, shortTime, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
+import type { Draft } from './QuickCreate'
 
 /**
  * Google Calendar's month view: the grid fills the screen, rows share the
@@ -22,6 +23,7 @@ export default function MonthView({
   onDay,
   onMore,
   onCreate,
+  draft = null,
 }: {
   cursor: Date
   weekStart: number
@@ -32,7 +34,9 @@ export default function MonthView({
   /** The date number was clicked: open that day. */
   onDay: (date: Date) => void
   onMore: (date: Date, rect: DOMRect) => void
-  onCreate: (date: Date) => void
+  onCreate: (date: Date, rect: DOMRect) => void
+  /** The unsaved event the quick-create card is editing. */
+  draft?: Draft | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 1000, h: 700 })
@@ -78,10 +82,11 @@ export default function MonthView({
         const inMonth = date.getMonth() === cursor.getMonth()
         const today = isToday(date)
         const firstRow = index < 7
+        const drafting = !!draft && dayKey(draft.start) === key
 
         // Room for chips once the date (and, on row one, the weekday) is drawn.
         const head = (firstRow ? 44 : 30) + 4
-        const fit = Math.max(0, Math.floor((rowH - head) / chipH))
+        const fit = Math.max(0, Math.floor((rowH - head) / chipH) - (drafting ? 1 : 0))
         const shown = list.length > fit ? list.slice(0, Math.max(0, fit - 1)) : list
         const extra = list.length - shown.length
 
@@ -95,7 +100,7 @@ export default function MonthView({
             key={key}
             role="gridcell"
             onClick={(e) => {
-              if (isAdmin && e.target === e.currentTarget) onCreate(date)
+              if (isAdmin && e.target === e.currentTarget) onCreate(date, e.currentTarget.getBoundingClientRect())
             }}
             className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-r border-[var(--line)] pb-1 ${
               index % 7 === 6 ? 'border-r-0' : ''
@@ -126,7 +131,19 @@ export default function MonthView({
               </button>
             </div>
 
-            <div className="mt-0.5 min-w-0 px-1">
+            <div className="pointer-events-none mt-0.5 min-w-0 px-1 [&>*]:pointer-events-auto">
+              {drafting && draft && (
+                <div
+                  data-ec={draft.color ?? 'peacock'}
+                  className={`ec-solid flex items-center truncate rounded font-medium shadow ${
+                    narrow ? 'px-0.5 text-[10px]' : 'px-1.5 text-xs'
+                  }`}
+                  style={{ height: chipH - 2, marginBottom: 2 }}
+                >
+                  {!draft.allDay && !narrow && <span className="mr-1.5 opacity-90">{shortTime(draft.start)}</span>}
+                  {draft.title || '(No title)'}
+                </div>
+              )}
               {shown.map((instance) => (
                 <Chip
                   key={instance.id}

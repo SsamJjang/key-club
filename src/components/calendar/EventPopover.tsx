@@ -17,7 +17,8 @@ const GAP = 8
  */
 export function useFloating(
   ref: RefObject<HTMLDivElement | null>,
-  anchor: DOMRect,
+  /** Null centres the card, as Google does for the Create button. */
+  anchor: DOMRect | null,
   width: number,
   onClose: () => void,
   over = false,
@@ -32,7 +33,10 @@ export function useFloating(
     const height = ref.current?.getBoundingClientRect().height ?? 320
     let left: number
     let top: number
-    if (over) {
+    if (!anchor) {
+      left = (window.innerWidth - width) / 2
+      top = (window.innerHeight - height) / 3
+    } else if (over) {
       // Google's "N more" card sits on top of the day it expands.
       left = anchor.left + anchor.width / 2 - width / 2
       top = anchor.top - 60

@@ -3,8 +3,18 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { isConfigured } from '../lib/supabase'
 import { Notice, Spinner } from '../components/ui'
-import Logo, { LogoWordmark } from '../components/Logo'
+import Logo from '../components/Logo'
 
+const PERKS: [string, string, string][] = [
+  ['🤝', 'Find ways to serve', 'Sign up for service projects in a tap.'],
+  ['⏱️', 'See your hours', 'Every approved hour, toward your goal.'],
+  ['📣', 'Stay in the loop', 'News and notices from the board.'],
+]
+
+/**
+ * The front door, in the same warm look as Home: one card in the middle of
+ * a soft navy-to-gold wash, the club's mark and motto above it.
+ */
 export default function Login() {
   const { session, loading, authError, signIn } = useAuth()
   const [busy, setBusy] = useState(false)
@@ -19,67 +29,33 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
-      {/* Left: the pitch */}
-      <div className="navy-stage relative hidden overflow-hidden p-12 lg:flex lg:flex-col lg:justify-between">
-        <div
-          className="pointer-events-none absolute -right-10 top-0 h-full w-20 -skew-x-12 bg-[image:var(--gold)]"
-          aria-hidden
-        />
+    <div className="relative flex min-h-dvh flex-col items-center overflow-hidden bg-gradient-to-br from-navy-50 via-[var(--surface)] to-gold-100/70 px-5 py-12 dark:from-navy-950 dark:via-navy-950 dark:to-navy-900">
+      {/* The club seal, oversized and faint, behind everything. */}
+      <Logo size={720} className="pointer-events-none absolute -bottom-56 -right-56 opacity-[0.04]" />
 
-        <div className="relative flex items-center gap-3">
-          <Logo size={44} tone="light" />
-          <span className="font-[family-name:var(--font-display)] text-xl font-semibold">
-            Key Club
-          </span>
-        </div>
+      <main className="rise relative my-auto flex w-full max-w-md flex-col items-center text-center">
+        <Logo size={88} />
+        <p className="eyebrow mt-5">GCS Key Club</p>
+        <h1 className="display mt-3 text-5xl sm:text-6xl">Welcome.</h1>
+        <p className="mt-4 font-[family-name:var(--font-display)] text-xl italic text-navy-700 dark:text-navy-200">
+          “Caring — our way of life.”
+        </p>
 
-        <div className="relative">
-          <h1 className="display pr-16 text-7xl">
-            Caring — our&nbsp;way of&nbsp;<span className="gold-text">life.</span>
-          </h1>
-          <p className="mt-6 max-w-md text-navy-200">
-            The official GCS Key Club website. Events, news, and volunteers in a glance. Sign in with your school email to continue.
-          </p>
-        </div>
-
-        <dl className="relative grid grid-cols-3 gap-4 text-sm">
-          {[
-            ['Events', 'Sign up in a tap'],
-            ['Hours', 'Logged and verified'],
-            ['Members', 'Everyone, one page'],
-          ].map(([term, desc]) => (
-            <div key={term}>
-              <dt className="font-semibold text-gold-300">{term}</dt>
-              <dd className="mt-0.5 text-navy-200">{desc}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      {/* Right: the door */}
-      <div className="flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-sm rise">
-          <div className="mb-8 lg:hidden">
-            <LogoWordmark size={36} />
-          </div>
-
-          <h2 className="display text-5xl">Welcome back</h2>
-          <p className="mt-2 text-sm muted">
-            Key Club member exclusive. Sign-in with your respective school email.
-          </p>
+        <div className="card mt-10 w-full p-7 text-left sm:p-8">
+          <h2 className="text-lg font-semibold">Sign in to the club</h2>
+          <p className="mt-1 text-sm muted">For Key Club members only. Use your school Google account.</p>
 
           {!isConfigured && (
-            <div className="mt-6">
+            <div className="mt-5">
               <Notice tone="error">
-                Supabase isn’t configured. Copy <code>.env.example</code> to <code>.env</code> and
-                add your project URL and anon key.
+                Supabase isn’t configured. Copy <code>.env.example</code> to <code>.env</code> and add your
+                project URL and anon key.
               </Notice>
             </div>
           )}
 
           {authError && (
-            <div className="mt-6">
+            <div className="mt-5">
               <Notice tone="error">{authError}</Notice>
             </div>
           )}
@@ -88,7 +64,7 @@ export default function Login() {
             type="button"
             onClick={() => void handleSignIn()}
             disabled={busy || !isConfigured}
-            className="btn btn-ghost mt-8 w-full py-3 text-base"
+            className="btn btn-ghost mt-6 w-full py-3 text-base"
           >
             <svg viewBox="0 0 24 24" className="size-5" aria-hidden>
               <path
@@ -111,11 +87,25 @@ export default function Login() {
             {busy ? 'Opening Google…' : 'Continue with Google'}
           </button>
 
-          <p className="mt-6 text-xs muted">
-            Not on the roster? Ask a club officer to add you, then sign in again.
+          <p className="mt-5 text-xs muted">
+            Not on the roster yet? Ask a club officer to add you, then sign in again.
           </p>
         </div>
-      </div>
+
+        <ul className="mt-10 grid w-full gap-4 text-left sm:grid-cols-3 sm:text-center">
+          {PERKS.map(([icon, title, desc]) => (
+            <li key={title} className="flex items-start gap-3 sm:flex-col sm:items-center sm:gap-1.5">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--card)] text-lg shadow-sm" aria-hidden>
+                {icon}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">{title}</span>
+                <span className="block text-xs muted">{desc}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </main>
     </div>
   )
 }

@@ -103,6 +103,7 @@ export default function Events() {
           busyId={busyId}
           isAdmin={isAdmin}
           userId={profile?.id ?? null}
+          onCreated={() => void load()}
         />
       )}
     </div>
