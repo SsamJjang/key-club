@@ -159,6 +159,9 @@ export default function EventPopover({
           sheet ? 'fixed inset-x-0 bottom-0 max-h-[85vh] rounded-b-none' : 'fixed max-h-[85vh]'
         }`}
       >
+        {/* A band of the event's colour across the top. */}
+        <div className="ec-block h-1.5" aria-hidden />
+
         {/* Action bar */}
         <div className="flex items-center justify-end gap-0.5 px-2 pt-2">
           {isAdmin && (
@@ -209,7 +212,7 @@ export default function EventPopover({
 
         <div className="px-5 pb-2">
           <Row icon="swatch">
-            <h2 className="text-[1.375rem] leading-snug">{event.title}</h2>
+            <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight">{event.title}</h2>
             <p className="mt-1 muted">
               {dateLine}
               {timeLine && <> ⋅ {timeLine}</>}

@@ -104,11 +104,11 @@ export default function MonthView({
             }}
             className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-r border-[var(--line)] pb-1 ${
               index % 7 === 6 ? 'border-r-0' : ''
-            } ${isAdmin ? 'cursor-pointer' : ''}`}
+            } ${today ? 'cal-today-col' : date.getDay() % 6 === 0 ? 'cal-weekend' : ''} ${isAdmin ? 'cursor-pointer' : ''}`}
           >
             <div className="pointer-events-none flex flex-col items-center pt-1.5">
               {firstRow && (
-                <span className="mb-0.5 text-[11px] font-medium uppercase tracking-wide muted">
+                <span className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] muted">
                   {narrow
                     ? WEEKDAY_SHORT[(weekStart + index) % 7][0]
                     : WEEKDAY_SHORT[(weekStart + index) % 7]}
@@ -121,7 +121,7 @@ export default function MonthView({
                 aria-label={date.toDateString()}
                 className={`pointer-events-auto grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-xs font-medium transition ${
                   today
-                    ? 'bg-navy-600 text-white dark:bg-navy-300 dark:text-navy-950'
+                    ? 'cal-today'
                     : inMonth
                       ? 'hover:bg-[var(--surface-2)]'
                       : 'text-[var(--ink-faint)] hover:bg-[var(--surface-2)]'
@@ -135,7 +135,7 @@ export default function MonthView({
               {drafting && draft && (
                 <div
                   data-ec={draft.color ?? 'peacock'}
-                  className={`ec-solid flex items-center truncate rounded font-medium shadow ${
+                  className={`ec-block flex items-center truncate rounded font-medium shadow-lg ${
                     narrow ? 'px-0.5 text-[10px]' : 'px-1.5 text-xs'
                   }`}
                   style={{ height: chipH - 2, marginBottom: 2 }}
@@ -207,7 +207,7 @@ export function Chip({
         narrow ? 'px-0.5 text-[10px]' : 'px-1.5 text-xs'
       } ${
         bar
-          ? `${going || instance.allDay ? 'ec-solid' : 'ec-soft'} font-medium hover:brightness-105`
+          ? `${going || instance.allDay ? 'ec-block' : 'ec-block-soft'} font-medium hover:brightness-105`
           : 'hover:bg-[var(--surface-2)]'
       } ${past ? 'ec-past' : ''}`}
     >

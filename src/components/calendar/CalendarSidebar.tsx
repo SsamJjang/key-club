@@ -50,14 +50,14 @@ export default function CalendarSidebar({
   }, [events])
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto pb-4 pr-2">
+    <div className="flex h-full flex-col gap-4 overflow-y-auto pb-4 pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
       {isAdmin && (
         <button
           type="button"
           onClick={onCreate}
-          className="flex h-14 w-fit items-center gap-3 rounded-2xl bg-[var(--card)] pl-4 pr-6 text-sm font-medium shadow-[0_1px_3px_rgb(0_0_0/0.2),0_4px_8px_rgb(0_0_0/0.1)] transition hover:bg-[var(--surface-2)] hover:shadow-[0_2px_6px_rgb(0_0_0/0.2),0_8px_16px_rgb(0_0_0/0.12)]"
+          className="cal-create flex h-14 w-fit items-center gap-3 rounded-2xl pl-4 pr-6 text-sm font-semibold transition"
         >
-          <Icon name="plus" className="size-6 text-navy-600 dark:text-gold-300" />
+          <Icon name="plus" className="size-6" />
           Create
         </button>
       )}

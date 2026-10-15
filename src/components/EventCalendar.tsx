@@ -336,9 +336,9 @@ export default function EventCalendar({
   // -------------------------------------------------------------------
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--card)]">
+    <div className="cal-rail flex h-full min-h-0 flex-col">
       {/* ---------------- Top bar ---------------- */}
-      <header className="flex h-16 shrink-0 items-center gap-1 border-b border-[var(--line)] px-2 sm:gap-2 sm:px-3">
+      <header className="flex h-16 shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3">
         {searching ? (
           <>
             <IconButton icon="left" label="Back" onClick={closeSearch} />
@@ -374,7 +374,7 @@ export default function EventCalendar({
               <IconButton icon="left" label={`Previous ${currentView.label.toLowerCase()}`} onClick={() => shift(-1)} />
               <IconButton icon="right" label={`Next ${currentView.label.toLowerCase()}`} onClick={() => shift(1)} />
             </div>
-            <h2 className="ml-1 min-w-0 truncate text-lg sm:text-[1.375rem]">{title}</h2>
+            <h2 className="display ml-2 min-w-0 truncate text-xl sm:text-[1.75rem]">{title}</h2>
 
             <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
               <IconButton
@@ -463,14 +463,16 @@ export default function EventCalendar({
       <div className="flex min-h-0 flex-1">
         {/* ---------------- Sidebar (desktop) ---------------- */}
         {sidebar && (
-          <aside className="hidden w-64 shrink-0 pl-3 pt-3 md:block">
+          <aside className="hidden w-64 shrink-0 pl-3 pt-1 md:block">
             <CalendarSidebar {...sidebarProps} />
           </aside>
         )}
 
         {/* ---------------- The view ---------------- */}
         <main
-          className={`min-h-0 min-w-0 flex-1 ${sidebar ? 'md:border-l md:border-[var(--line)]' : ''}`}
+          className={`cal-surface min-h-0 min-w-0 flex-1 overflow-hidden border-t border-[var(--line)] md:mb-3 md:mr-3 md:rounded-3xl md:border md:shadow-[var(--shadow)] ${
+            sidebar ? '' : 'md:ml-3'
+          }`}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
@@ -552,7 +554,7 @@ export default function EventCalendar({
           type="button"
           onClick={createNow}
           aria-label="Create event"
-          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 grid size-14 place-items-center rounded-2xl bg-[var(--card)] text-navy-600 shadow-[0_2px_6px_rgb(0_0_0/0.25),0_8px_20px_rgb(0_0_0/0.15)] md:hidden dark:text-gold-300"
+          className="cal-create fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 grid size-14 place-items-center rounded-2xl md:hidden"
         >
           <Icon name="plus" className="size-7" />
         </button>

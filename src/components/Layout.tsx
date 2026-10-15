@@ -98,8 +98,10 @@ export default function Layout() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-dvh flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--surface)]/85 backdrop-blur-md">
+    // On the calendar the shell is exactly one screen tall and never scrolls;
+    // the calendar inside takes whatever the header and tab bar leave.
+    <div className={fullBleed ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-dvh flex flex-col'}>
+      <header className="sticky top-0 z-40 shrink-0 border-b border-[var(--line)] bg-[var(--surface)]/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4 sm:px-6">
           <Link to="/" className="shrink-0" aria-label="Key Club home">
             <LogoWordmark size={34} />
@@ -125,7 +127,7 @@ export default function Layout() {
       </header>
 
       {fullBleed ? (
-        <main className="w-full">
+        <main className="min-h-0 w-full flex-1 pb-[calc(4.1rem+env(safe-area-inset-bottom))] md:pb-0">
           <Outlet />
         </main>
       ) : (

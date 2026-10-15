@@ -48,15 +48,15 @@ export default function AgendaView({
             <div className="flex gap-2 border-b border-[var(--line)] py-1.5 last:border-b-0">
               <div className="flex w-[4.5rem] shrink-0 items-start gap-1.5 pt-1 sm:w-24">
                 <span
-                  className={`grid size-8 shrink-0 place-items-center rounded-full text-xl ${
-                    today ? 'bg-navy-600 text-white dark:bg-navy-300 dark:text-navy-950' : ''
+                  className={`grid size-8 shrink-0 place-items-center rounded-full font-[family-name:var(--font-display)] text-xl ${
+                    today ? 'cal-today' : ''
                   }`}
                 >
                   {date.getDate()}
                 </span>
                 <span
                   className={`pt-1.5 text-[11px] font-medium uppercase leading-tight ${
-                    today ? 'text-navy-600 dark:text-navy-200' : 'muted'
+                    today ? 'cal-today-text' : 'muted'
                   }`}
                 >
                   {date.toLocaleDateString(undefined, { month: 'short' })},{' '}

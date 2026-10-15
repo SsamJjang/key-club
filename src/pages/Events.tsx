@@ -87,7 +87,7 @@ export default function Events() {
   return (
     // Full-bleed, full-height, like Google Calendar: the layout drops its
     // padding and footer on this route (see Layout).
-    <div className="relative h-[calc(100dvh-4rem-4.1rem-env(safe-area-inset-bottom))] md:h-[calc(100dvh-4rem)]">
+    <div className="relative h-full">
       {error && (
         <div className="absolute inset-x-0 top-16 z-20 mx-auto w-fit max-w-[90%]">
           <Notice tone="error">{error}</Notice>

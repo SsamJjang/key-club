@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Instance } from '../../lib/calendar'
 import {
   HOUR_PX,
@@ -60,7 +60,8 @@ export default function TimeGrid({
   const single = days.length === 1
 
   // Open scrolled to the morning, or earlier if something starts earlier.
-  useEffect(() => {
+  // Layout effect: set before paint, once the scroller has its real height.
+  useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = Math.max(0, Math.min(7, firstBusy) * HOUR_PX - 8)
@@ -106,8 +107,8 @@ export default function TimeGrid({
           return (
             <div key={dayKey(date)} className={`flex flex-col pt-2 ${single ? 'items-start pl-2' : 'items-center'}`}>
               <span
-                className={`text-[11px] font-medium uppercase tracking-wide ${
-                  today ? 'text-navy-600 dark:text-navy-200' : 'muted'
+                className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                  today ? 'cal-today-text' : 'muted'
                 }`}
               >
                 {date.toLocaleDateString(undefined, { weekday: 'short' })}
@@ -116,10 +117,8 @@ export default function TimeGrid({
                 type="button"
                 onClick={() => onDay(date)}
                 aria-current={today ? 'date' : undefined}
-                className={`mt-0.5 grid size-11 place-items-center rounded-full text-2xl transition ${
-                  today
-                    ? 'bg-navy-600 text-white dark:bg-navy-300 dark:text-navy-950'
-                    : 'hover:bg-[var(--surface-2)]'
+                className={`mt-0.5 grid size-11 place-items-center rounded-full font-[family-name:var(--font-display)] text-2xl transition ${
+                  today ? 'cal-today' : 'hover:bg-[var(--surface-2)]'
                 }`}
               >
                 {date.getDate()}
@@ -142,7 +141,7 @@ export default function TimeGrid({
               {draft?.allDay && sameDay(draft.start, date) && (
                 <div
                   data-ec={draft.color ?? 'peacock'}
-                  className="ec-solid mb-0.5 flex h-5 items-center truncate rounded px-1.5 text-xs font-medium shadow"
+                  className="ec-block mb-0.5 flex h-5 items-center truncate rounded-md pl-2 pr-1.5 text-xs font-medium"
                 >
                   {draft.title || '(No title)'}
                 </div>
@@ -155,7 +154,7 @@ export default function TimeGrid({
                     type="button"
                     data-ec={colorOf(instance.event)}
                     onClick={(e) => onOpen(instance, e.currentTarget.getBoundingClientRect())}
-                    className={`ec-solid mb-0.5 flex h-5 w-full items-center truncate rounded px-1.5 text-left text-xs font-medium hover:brightness-105 ${
+                    className={`ec-block mb-0.5 flex h-5 w-full items-center truncate rounded-md pl-2 pr-1.5 text-left text-xs font-medium hover:brightness-105 ${
                       status === 'past' ? 'ec-past' : ''
                     }`}
                   >
@@ -192,11 +191,26 @@ export default function TimeGrid({
               <div
                 key={dayKey(date)}
                 onClick={(e) => createAt(date, e)}
-                className={`relative border-l border-[var(--line)] ${isAdmin ? 'cursor-pointer' : ''}`}
-                style={{
-                  backgroundImage: `repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px ${HOUR_PX}px)`,
-                }}
+                className={`relative border-l border-[var(--line)] ${
+                  today ? 'cal-today-col' : date.getDay() % 6 === 0 ? 'cal-weekend' : ''
+                } ${isAdmin ? 'cursor-pointer' : ''}`}
               >
+                {/* Hour rules, and a fainter dotted rule at each half hour. */}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    backgroundImage: `repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px ${HOUR_PX}px)`,
+                  }}
+                  aria-hidden
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <div
+                      key={h}
+                      className="cal-half-line absolute inset-x-0"
+                      style={{ top: h * HOUR_PX + HOUR_PX / 2 }}
+                    />
+                  ))}
+                </div>
                 {today && (
                   <div
                     className="cal-now pointer-events-none absolute inset-x-0 z-20"
@@ -208,7 +222,7 @@ export default function TimeGrid({
                 {draft && !draft.allDay && sameDay(draft.start, date) && (
                   <div
                     data-ec={draft.color ?? 'peacock'}
-                    className="ec-solid pointer-events-none absolute z-30 overflow-hidden rounded-md px-1.5 py-1 text-xs leading-tight shadow-lg"
+                    className="ec-block pointer-events-none absolute z-30 overflow-hidden rounded-lg py-1 pl-2 pr-1.5 text-xs leading-tight shadow-xl"
                     style={{
                       top: ((draft.start.getHours() * 60 + draft.start.getMinutes()) / 1440) * DAY_PX + 1,
                       height: Math.max(20, ((draft.end.getTime() - draft.start.getTime()) / 864e5) * DAY_PX - 2),
@@ -250,8 +264,8 @@ export default function TimeGrid({
                         left: `calc(${left * 100}% + 1px)`,
                         width: `calc(${span * 100}% - 8px)`,
                       }}
-                      className={`absolute z-10 overflow-hidden rounded-md px-1.5 text-left text-xs leading-tight shadow-sm ring-1 ring-[var(--card)] transition hover:z-30 hover:shadow-md ${
-                        status === 'going' ? 'ec-solid' : 'ec-soft'
+                      className={`absolute z-10 overflow-hidden rounded-lg pl-2 pr-1.5 text-left text-xs leading-tight transition hover:z-30 hover:-translate-y-px ${
+                        status === 'going' ? 'ec-block' : 'ec-block-soft'
                       } ${status === 'past' ? 'ec-past' : ''} ${short ? 'py-0' : 'py-1'}`}
                     >
                       {short ? (

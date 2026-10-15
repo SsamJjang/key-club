@@ -65,7 +65,7 @@ export default function MiniMonth({
               aria-current={today ? 'date' : undefined}
               className={`mx-auto grid size-7 place-items-center rounded-full text-[11px] transition ${
                 today
-                  ? 'bg-navy-600 font-semibold text-white dark:bg-navy-300 dark:text-navy-950'
+                  ? 'cal-today'
                   : active
                     ? 'bg-navy-100 font-semibold text-navy-800 dark:bg-navy-700 dark:text-navy-50'
                     : inMonth

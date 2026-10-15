@@ -923,13 +923,106 @@ html.dark {
 
   /* The floating event card. Fixed-positioned by the component. */
   .cal-popover {
-    background: var(--card);
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
     border: 1px solid var(--line);
-    border-radius: 1rem;
-    box-shadow: 0 18px 48px -12px rgb(15 35 64 / 0.35);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.6) inset,
+      0 2px 6px rgb(15 35 64 / 0.08),
+      0 24px 60px -16px rgb(15 35 64 / 0.4);
   }
   html.dark .cal-popover {
-    box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.7);
+    background: color-mix(in srgb, #12294a 94%, transparent);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.06) inset,
+      0 24px 60px -12px rgb(0 0 0 / 0.75);
+  }
+
+  /* ---- the richer layer ------------------------------------------------ */
+
+  /* Today, everywhere: a disc of crest gold rather than a plain blue dot. */
+  .cal-today {
+    background: var(--gold);
+    color: var(--gold-ink) !important;
+    font-weight: 600;
+    box-shadow: 0 2px 10px -2px rgb(217 162 42 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.45);
+  }
+  .cal-today-text {
+    color: var(--color-gold-500);
+  }
+  html.dark .cal-today-text {
+    color: var(--color-gold-300);
+  }
+
+  /* Today's column (and month cell) carries a faint gold wash. */
+  .cal-today-col {
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--color-gold-300) 9%, transparent), transparent 70%);
+  }
+  .cal-weekend {
+    background-color: color-mix(in srgb, var(--ink) 2.5%, transparent);
+  }
+  html.dark .cal-weekend {
+    background-color: rgb(0 0 0 / 0.12);
+  }
+
+  /* The calendar's own surface: card colour with a soft top light. */
+  .cal-surface {
+    background:
+      radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--color-navy-300) 10%, transparent), transparent 60%),
+      var(--card);
+  }
+  .cal-rail {
+    background: var(--surface);
+  }
+
+  /* Timed event blocks with some dimension: a top-lit gradient of their
+     colour, a darker spine, and a soft coloured shadow. */
+  .ec-block {
+    background: linear-gradient(170deg, color-mix(in srgb, var(--ec) 82%, white) 0%, var(--ec) 70%);
+    color: #fff;
+    box-shadow:
+      inset 3px 0 0 color-mix(in srgb, var(--ec) 65%, black),
+      inset 0 1px 0 rgb(255 255 255 / 0.25),
+      0 6px 14px -8px color-mix(in srgb, var(--ec) 80%, transparent);
+  }
+  html.dark .ec-block {
+    background: linear-gradient(170deg, color-mix(in srgb, var(--ec) 78%, white 6%) 0%, color-mix(in srgb, var(--ec) 72%, #0f2340) 80%);
+  }
+  .ec-block-soft {
+    background: color-mix(in srgb, var(--ec) 14%, var(--card));
+    color: color-mix(in srgb, var(--ec) 70%, var(--ink));
+    box-shadow: inset 3px 0 0 var(--ec);
+  }
+  html.dark .ec-block-soft {
+    background: color-mix(in srgb, var(--ec) 24%, var(--card));
+    color: color-mix(in srgb, var(--ec) 25%, var(--ink));
+  }
+  .ec-block.ec-past,
+  .ec-block-soft.ec-past {
+    opacity: 0.55;
+  }
+
+  /* The Create button: crest gold, lit from above. */
+  .cal-create {
+    background: var(--gold);
+    color: var(--gold-ink);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.5),
+      0 1px 2px rgb(42 29 5 / 0.25),
+      0 8px 20px -8px rgb(217 162 42 / 0.6);
+  }
+  .cal-create:hover {
+    filter: brightness(1.05);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.5),
+      0 2px 4px rgb(42 29 5 / 0.25),
+      0 12px 26px -8px rgb(217 162 42 / 0.7);
+  }
+
+  .cal-now {
+    box-shadow: 0 0 8px rgb(234 67 53 / 0.6);
   }
 
   .cal-scroll {
