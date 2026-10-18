@@ -1,21 +1,30 @@
 import { useMemo, useState } from 'react'
 import {
-  DEFAULT_WEEKS,
   MAX_OCCURRENCES,
   WEEKDAY_LABELS,
+  WEEKDAY_NAMES,
   addDays,
+  applyPreset,
+  describeRule,
   describeSchedule,
   generateDates,
-  type RepeatMode,
+  isLastOfMonth,
+  matchPreset,
+  nthOfMonth,
+  repeatPresets,
+  type Freq,
+  type MonthlyBy,
   type ScheduleForm,
 } from '../lib/schedule'
 import { fromDayKey } from '../lib/format'
 
-const MODES: [RepeatMode, string, string][] = [
-  ['once', 'Just once', 'A single day.'],
-  ['weekly', 'Every week', 'Same weekday every week until a date you pick.'],
-  ['custom', 'Pick dates', 'A run of days, or any set of dates you choose.'],
-]
+const FREQ_LABEL: Record<Freq, [string, string]> = {
+  day: ['day', 'days'],
+  week: ['week', 'weeks'],
+  month: ['month', 'months'],
+}
+
+const ORDINAL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 
 function longDate(key: string) {
   return fromDayKey(key).toLocaleDateString(undefined, {
@@ -45,40 +54,42 @@ export default function EventSchedule({
   const [showAll, setShowAll] = useState(false)
 
   const dates = useMemo(() => generateDates(value), [value])
-  const note = useMemo(() => describeSchedule(dates), [dates])
+  const note = useMemo(
+    () => (dates.length > 1 && value.repeat === 'rule' ? describeRule(value) : describeSchedule(dates)),
+    [dates, value],
+  )
+  const presets = useMemo(() => repeatPresets(value.start_date), [value.start_date])
+  const picked = matchPreset(value)
 
   function set(patch: Partial<ScheduleForm>) {
     onChange({ ...value, ...patch })
   }
 
-  function setMode(repeat: RepeatMode) {
-    if (repeat === 'weekly') {
-      const base = value.start_date || ''
-      set({
-        repeat,
-        // Pre-fill a term's worth so the field is never an empty demand.
-        repeat_until: value.repeat_until || (base ? addDays(base, DEFAULT_WEEKS * 7) : ''),
-        weekdays: value.weekdays.length > 0 ? value.weekdays : base ? [fromDayKey(base).getDay()] : [],
-      })
-    } else if (repeat === 'custom') {
-      set({
-        repeat,
-        custom_dates:
-          value.custom_dates.length > 0
-            ? value.custom_dates
-            : value.start_date
-              ? [value.start_date]
-              : [],
-      })
-    } else {
-      set({ repeat })
-    }
+  /** Moving the start date re-aims a preset ("Weekly on Wed" → "on Thu"). */
+  function setStartDate(start_date: string) {
+    // Keep a hand-picked list anchored to the date above it.
+    const custom_dates =
+      value.repeat === 'custom' && value.custom_dates.length <= 1 && start_date
+        ? [start_date]
+        : value.custom_dates
+    const next = { ...value, start_date, custom_dates }
+    const preset = matchPreset(value)
+    if (value.repeat === 'rule' && preset !== 'rule' && start_date) {
+      onChange(applyPreset(next, preset))
+    } else onChange(next)
   }
 
+  // No chips picked means "the start's weekday" — show it lit, and build
+  // on it when another day is added.
+  const shownWeekdays =
+    value.weekdays.length > 0 || !value.start_date ? value.weekdays : [fromDayKey(value.start_date).getDay()]
+
   function toggleWeekday(day: number) {
-    const has = value.weekdays.includes(day)
+    const has = shownWeekdays.includes(day)
+    // Keep at least one day: a weekly rule on no days is no rule.
+    if (has && shownWeekdays.length === 1) return
     set({
-      weekdays: has ? value.weekdays.filter((d) => d !== day) : [...value.weekdays, day].sort(),
+      weekdays: has ? shownWeekdays.filter((d) => d !== day) : [...shownWeekdays, day].sort(),
     })
   }
 
@@ -107,15 +118,7 @@ export default function EventSchedule({
           type="date"
           className="field"
           value={value.start_date}
-          onChange={(e) => {
-            const start_date = e.target.value
-            // Keep a hand-picked list anchored to the date above it.
-            const custom_dates =
-              value.repeat === 'custom' && value.custom_dates.length <= 1 && start_date
-                ? [start_date]
-                : value.custom_dates
-            set({ start_date, custom_dates })
-          }}
+          onChange={(e) => setStartDate(e.target.value)}
         />
       </div>
 
@@ -151,39 +154,83 @@ export default function EventSchedule({
 
       <div>
         <span className="label">Repeats</span>
-        <div className="grid gap-1.5">
-          {MODES.map(([mode, label, hint]) => (
-            <label
-              key={mode}
-              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-sm transition ${
-                value.repeat === mode
-                  ? 'border-navy-400 bg-navy-50 dark:bg-navy-800'
-                  : 'border-[var(--line)] hover:border-navy-300'
-              }`}
-            >
-              <input
-                type="radio"
-                name="repeat"
-                className="mt-0.5 size-4"
-                checked={value.repeat === mode}
-                onChange={() => setMode(mode)}
-              />
-              <span>
-                <span className="font-medium">{label}</span>
-                <span className="block text-xs muted">{hint}</span>
-              </span>
-            </label>
+        <select
+          className="field"
+          aria-label="Repeats"
+          value={picked}
+          onChange={(e) => onChange(applyPreset(value, e.target.value))}
+        >
+          <option value="once">Does not repeat</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
           ))}
-        </div>
+          <option value="rule">Custom…</option>
+          <option value="custom">Pick specific dates</option>
+        </select>
+        {!value.start_date && value.repeat !== 'custom' && (
+          <p className="mt-1 text-xs muted">Set the date above to see daily, weekly and monthly options.</p>
+        )}
       </div>
 
-      {value.repeat === 'weekly' && (
+      {value.repeat === 'rule' && (
         <div className="space-y-3 rounded-lg border border-[var(--line)] p-3">
           <div>
+            <span className="label">Repeat every</span>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                max={99}
+                aria-label="Interval"
+                className="field w-20"
+                value={value.interval}
+                onChange={(e) => set({ interval: Math.max(1, Math.min(99, Number(e.target.value) || 1)) })}
+              />
+              <select
+                className="field"
+                aria-label="Unit"
+                value={value.freq}
+                onChange={(e) => {
+                  const freq = e.target.value as Freq
+                  set({ freq, weekdays: freq === 'week' ? value.weekdays : [] })
+                }}
+              >
+                {(Object.keys(FREQ_LABEL) as Freq[]).map((f) => (
+                  <option key={f} value={f}>
+                    {FREQ_LABEL[f][value.interval === 1 ? 0 : 1]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {value.freq === 'month' && value.start_date && (
+            <div>
+              <label className="label" htmlFor="monthly-by">On</label>
+              <select
+                id="monthly-by"
+                className="field"
+                value={value.monthly_by}
+                onChange={(e) => set({ monthly_by: e.target.value as MonthlyBy })}
+              >
+                <option value="day">Day {fromDayKey(value.start_date).getDate()} of the month</option>
+                <option value="nth">
+                  The {ORDINAL[nthOfMonth(value.start_date)]} {WEEKDAY_NAMES[fromDayKey(value.start_date).getDay()]}
+                </option>
+                {isLastOfMonth(value.start_date) && (
+                  <option value="last">The last {WEEKDAY_NAMES[fromDayKey(value.start_date).getDay()]}</option>
+                )}
+              </select>
+            </div>
+          )}
+
+          {value.freq === 'week' && <div>
             <span className="label">On these days</span>
             <div className="flex flex-wrap gap-1">
               {WEEKDAY_LABELS.map((label, day) => {
-                const on = value.weekdays.includes(day)
+                const on = shownWeekdays.includes(day)
                 return (
                   <button
                     key={label}
@@ -201,22 +248,56 @@ export default function EventSchedule({
                 )
               })}
             </div>
-          </div>
+          </div>}
 
           <div>
-            <label className="label" htmlFor="until">Until</label>
-            <input
-              id="until"
-              type="date"
-              className="field"
-              min={value.start_date || undefined}
-              value={value.repeat_until}
-              onChange={(e) => set({ repeat_until: e.target.value })}
-            />
+            <span className="label">Ends</span>
+            <div className="space-y-2 text-sm">
+              <label className="flex items-center gap-2.5">
+                <input
+                  type="radio"
+                  name="ends"
+                  className="size-4"
+                  checked={value.ends === 'until'}
+                  onChange={() => set({ ends: 'until' })}
+                />
+                <span className="w-12">On</span>
+                <input
+                  type="date"
+                  aria-label="End date"
+                  className="field"
+                  min={value.start_date || undefined}
+                  value={value.repeat_until}
+                  disabled={value.ends !== 'until'}
+                  onChange={(e) => set({ repeat_until: e.target.value })}
+                />
+              </label>
+              <label className="flex items-center gap-2.5">
+                <input
+                  type="radio"
+                  name="ends"
+                  className="size-4"
+                  checked={value.ends === 'count'}
+                  onChange={() => set({ ends: 'count' })}
+                />
+                <span className="w-12">After</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_OCCURRENCES}
+                  aria-label="Number of times"
+                  className="field w-24"
+                  value={value.count}
+                  disabled={value.ends !== 'count'}
+                  onChange={(e) => set({ count: Math.max(1, Math.min(MAX_OCCURRENCES, Number(e.target.value) || 1)) })}
+                />
+                <span className="muted">times</span>
+              </label>
+            </div>
           </div>
 
           {!value.start_date && (
-            <p className="text-xs muted">Set the start date above and the weeks will fill in.</p>
+            <p className="text-xs muted">Set the start date above and the dates will fill in.</p>
           )}
         </div>
       )}

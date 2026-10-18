@@ -10,7 +10,20 @@ import type { Post } from './types'
  * something they can read back, edit one date out of, and trust.
  */
 
-export type RepeatMode = 'once' | 'weekly' | 'custom'
+/**
+ * once   — a single day.
+ * rule   — "every N days / weeks / months", generated up to an end.
+ * custom — a hand-picked list of dates.
+ */
+export type RepeatMode = 'once' | 'rule' | 'custom'
+
+export type Freq = 'day' | 'week' | 'month'
+
+/**
+ * How a monthly rule lands: on the same day number (the 15th), on the same
+ * nth weekday (the 3rd Wednesday), or on the last such weekday.
+ */
+export type MonthlyBy = 'day' | 'nth' | 'last'
 
 export interface ScheduleForm {
   /** YYYY-MM-DD, or '' when the date is genuinely not known yet. */
@@ -19,9 +32,16 @@ export interface ScheduleForm {
   start_time: string
   end_time: string
   repeat: RepeatMode
-  /** 0 = Sunday … 6 = Saturday. */
+  /** Rule only: the unit, and every how many of them. */
+  freq: Freq
+  interval: number
+  /** Weekly rules: 0 = Sunday … 6 = Saturday. Empty = the start's weekday. */
   weekdays: number[]
+  monthly_by: MonthlyBy
+  /** Rule only: stop on a date, or after a number of occurrences. */
+  ends: 'until' | 'count'
   repeat_until: string
+  count: number
   /** Every date in a hand-picked series, including the first. */
   custom_dates: string[]
 }
@@ -31,8 +51,13 @@ export const BLANK_SCHEDULE: ScheduleForm = {
   start_time: '',
   end_time: '',
   repeat: 'once',
+  freq: 'week',
+  interval: 1,
   weekdays: [],
+  monthly_by: 'day',
+  ends: 'until',
   repeat_until: '',
+  count: 10,
   custom_dates: [],
 }
 
@@ -46,6 +71,221 @@ export const DEFAULT_WEEKS = 12
 export const MAX_OCCURRENCES = 200
 
 export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** Whole days between two local dates, immune to DST shifts. */
+function daysBetween(a: Date, b: Date) {
+  return Math.round(
+    (Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) /
+      864e5,
+  )
+}
+
+/** 1 for the first Wednesday of the month, 3 for the third … */
+export function nthOfMonth(key: string) {
+  return Math.ceil(fromDayKey(key).getDate() / 7)
+}
+
+/** True when no later same weekday exists in this month. */
+export function isLastOfMonth(key: string) {
+  const d = fromDayKey(key)
+  const next = new Date(d)
+  next.setDate(d.getDate() + 7)
+  return next.getMonth() !== d.getMonth()
+}
+
+const ORDINAL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
+
+function ordinalDay(n: number) {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${n}${s}`
+}
+
+/** The date in (year, month) a monthly rule lands on, or null to skip it. */
+function monthlyDate(start: Date, year: number, month: number, by: MonthlyBy): Date | null {
+  if (by === 'day') {
+    const d = new Date(year, month, start.getDate())
+    // The 31st in a 30-day month doesn't exist — skip it, as Google does.
+    return d.getMonth() === ((month % 12) + 12) % 12 ? d : null
+  }
+  const weekday = start.getDay()
+  if (by === 'last') {
+    const d = new Date(year, month + 1, 0)
+    d.setDate(d.getDate() - ((d.getDay() - weekday + 7) % 7))
+    return d
+  }
+  const n = Math.ceil(start.getDate() / 7)
+  const d = new Date(year, month, 1)
+  const target = d.getMonth()
+  d.setDate(1 + ((weekday - d.getDay() + 7) % 7) + (n - 1) * 7)
+  // A 5th Wednesday only exists in some months.
+  return d.getMonth() === target ? d : null
+}
+
+/** The rule's dates. Stops at the end date or count, and at MAX_OCCURRENCES. */
+function ruleDates(form: ScheduleForm): string[] {
+  const start = fromDayKey(form.start_date)
+  const every = Math.max(1, Math.floor(form.interval) || 1)
+  const byCount = form.ends === 'count'
+  const limit = byCount ? Math.min(MAX_OCCURRENCES, Math.max(1, Math.floor(form.count) || 1)) : MAX_OCCURRENCES
+  // No end date means no series yet — the editor asks for one rather than
+  // silently inventing a horizon.
+  if (!byCount && (!form.repeat_until || form.repeat_until < form.start_date)) return [form.start_date]
+  const end = byCount ? null : fromDayKey(form.repeat_until)
+  const within = (d: Date) => !end || d <= end
+
+  const out: string[] = []
+
+  if (form.freq === 'day') {
+    const d = new Date(start)
+    while (within(d) && out.length < limit) {
+      out.push(dayKey(d))
+      d.setDate(d.getDate() + every)
+    }
+    return out
+  }
+
+  if (form.freq === 'week') {
+    // No weekday chips picked means "the start's weekday", which is what
+    // someone choosing "weekly" without touching them almost always means.
+    const days = form.weekdays.length > 0 ? form.weekdays : [start.getDay()]
+    // Weeks run Sunday–Saturday, counted from the start date's week.
+    const week0 = new Date(start)
+    week0.setDate(start.getDate() - start.getDay())
+    const d = new Date(start)
+    for (let guard = 0; within(d) && out.length < limit && guard < 3700 * every; guard++) {
+      const week = Math.floor(daysBetween(week0, d) / 7)
+      if (week % every === 0 && days.includes(d.getDay())) out.push(dayKey(d))
+      d.setDate(d.getDate() + 1)
+    }
+    return out
+  }
+
+  for (let m = 0; out.length < limit && m < 1200; m += every) {
+    const d = monthlyDate(start, start.getFullYear(), start.getMonth() + m, form.monthly_by)
+    if (!d) continue
+    if (!within(d)) break
+    if (d >= start) out.push(dayKey(d))
+  }
+  return out
+}
+
+/** A plain-English line for a rule: "Every 2 weeks on Tue & Thu until Dec 17". */
+export function describeRule(form: ScheduleForm): string {
+  if (!form.start_date) return ''
+  const every = Math.max(1, Math.floor(form.interval) || 1)
+  const start = fromDayKey(form.start_date)
+  let line =
+    every === 1
+      ? { day: 'Daily', week: 'Weekly', month: 'Monthly' }[form.freq]
+      : `Every ${every} ${form.freq}s`
+
+  if (form.freq === 'week') {
+    const days = form.weekdays.length > 0 ? form.weekdays : [start.getDay()]
+    const weekdaysOnly = days.length === 5 && [1, 2, 3, 4, 5].every((d) => days.includes(d))
+    if (weekdaysOnly && every === 1) line = 'Every weekday'
+    else line += weekdaysOnly ? ' on weekdays' : ` on ${listNames(days.map((d) => WEEKDAY_LABELS[d]))}`
+  } else if (form.freq === 'month') {
+    const wd = WEEKDAY_NAMES[start.getDay()]
+    line +=
+      form.monthly_by === 'day'
+        ? ` on the ${ordinalDay(start.getDate())}`
+        : form.monthly_by === 'last'
+          ? ` on the last ${wd}`
+          : ` on the ${ORDINAL[nthOfMonth(form.start_date)]} ${wd}`
+  }
+
+  if (form.ends === 'count') line += `, ${Math.max(1, Math.floor(form.count) || 1)} times`
+  else if (form.repeat_until) line += ` until ${shortDate(form.repeat_until)}`
+  return line
+}
+
+/**
+ * The ready-made choices offered for a start date, as Google Calendar does.
+ * Each is just a filled-in rule, still editable afterwards.
+ */
+export interface RepeatPreset {
+  id: string
+  label: string
+  patch: Partial<ScheduleForm>
+}
+
+export function repeatPresets(startDate: string): RepeatPreset[] {
+  if (!startDate) return []
+  const d = fromDayKey(startDate)
+  const wd = d.getDay()
+  const name = WEEKDAY_NAMES[wd]
+  const rule = (p: Partial<ScheduleForm>): Partial<ScheduleForm> => ({
+    repeat: 'rule',
+    interval: 1,
+    weekdays: [],
+    monthly_by: 'day',
+    ...p,
+  })
+  const out: RepeatPreset[] = [
+    { id: 'daily', label: 'Daily', patch: rule({ freq: 'day' }) },
+    { id: 'weekly', label: `Weekly on ${name}`, patch: rule({ freq: 'week', weekdays: [wd] }) },
+    { id: 'biweekly', label: `Every 2 weeks on ${name}`, patch: rule({ freq: 'week', interval: 2, weekdays: [wd] }) },
+    {
+      id: 'monthly-nth',
+      label: `Monthly on the ${ORDINAL[nthOfMonth(startDate)]} ${name}`,
+      patch: rule({ freq: 'month', monthly_by: 'nth' }),
+    },
+  ]
+  if (isLastOfMonth(startDate)) {
+    out.push({ id: 'monthly-last', label: `Monthly on the last ${name}`, patch: rule({ freq: 'month', monthly_by: 'last' }) })
+  }
+  out.push(
+    { id: 'monthly-day', label: `Monthly on the ${ordinalDay(d.getDate())}`, patch: rule({ freq: 'month', monthly_by: 'day' }) },
+    { id: 'weekdays', label: 'Every weekday (Mon–Fri)', patch: rule({ freq: 'week', weekdays: [1, 2, 3, 4, 5] }) },
+  )
+  return out
+}
+
+/** Which preset the form matches: 'once', 'custom', a preset id, or 'rule' when hand-tuned. */
+export function matchPreset(form: ScheduleForm): string {
+  if (form.repeat !== 'rule') return form.repeat
+  const same = (a: number[], b: number[]) => a.length === b.length && a.every((x) => b.includes(x))
+  const days =
+    form.weekdays.length > 0 || !form.start_date ? form.weekdays : [fromDayKey(form.start_date).getDay()]
+  const hit = repeatPresets(form.start_date).find((p) => {
+    const t = p.patch
+    if (t.freq !== form.freq || t.interval !== form.interval) return false
+    if (form.freq === 'week') return same(t.weekdays ?? [], days)
+    if (form.freq === 'month') return t.monthly_by === form.monthly_by
+    return true
+  })
+  return hit?.id ?? 'rule'
+}
+
+/** A sensible default end for a new rule: a term of weeks, a school year of months. */
+export function defaultUntil(startDate: string, freq: Freq) {
+  if (!startDate) return ''
+  if (freq === 'month') {
+    const d = fromDayKey(startDate)
+    d.setMonth(d.getMonth() + 9)
+    return dayKey(d)
+  }
+  return addDays(startDate, DEFAULT_WEEKS * 7)
+}
+
+/** Apply a preset id (or 'once' / 'custom' / 'rule') to the form. */
+export function applyPreset(form: ScheduleForm, id: string): ScheduleForm {
+  if (id === 'once') return { ...form, repeat: 'once' }
+  if (id === 'custom') {
+    return {
+      ...form,
+      repeat: 'custom',
+      custom_dates: form.custom_dates.length > 0 ? form.custom_dates : form.start_date ? [form.start_date] : [],
+    }
+  }
+  const preset = repeatPresets(form.start_date).find((p) => p.id === id)
+  // 'rule' with no preset: open the builder on whatever the form holds,
+  // defaulting to weekly.
+  const next: ScheduleForm = preset ? { ...form, ...preset.patch } : { ...form, repeat: 'rule' }
+  if (!next.repeat_until) next.repeat_until = defaultUntil(next.start_date, next.freq)
+  return next
+}
 
 export function addDays(key: string, days: number) {
   const d = fromDayKey(key)
@@ -61,28 +301,7 @@ export function generateDates(form: ScheduleForm): string[] {
 
   if (!form.start_date) return []
 
-  if (form.repeat === 'weekly') {
-    // No end date means no series yet — the editor says so rather than
-    // silently inventing a horizon.
-    if (!form.repeat_until || form.repeat_until < form.start_date) return [form.start_date]
-
-    // An empty weekday selection means "the same weekday as the start date",
-    // which is what someone picking "every week" without touching the day
-    // chips almost always means.
-    const days = form.weekdays.length > 0
-      ? form.weekdays
-      : [fromDayKey(form.start_date).getDay()]
-
-    const out: string[] = []
-    const cursor = fromDayKey(form.start_date)
-    const end = fromDayKey(form.repeat_until)
-
-    while (cursor <= end && out.length < MAX_OCCURRENCES) {
-      if (days.includes(cursor.getDay())) out.push(dayKey(cursor))
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    return out
-  }
+  if (form.repeat === 'rule') return ruleDates(form)
 
   return [form.start_date]
 }
@@ -112,7 +331,8 @@ function weeklyPattern(dates: string[]): number[] | null {
   const expected = generateDates({
     ...BLANK_SCHEDULE,
     start_date: dates[0],
-    repeat: 'weekly',
+    repeat: 'rule',
+    freq: 'week',
     weekdays: days,
     repeat_until: dates[dates.length - 1],
   })
@@ -195,7 +415,10 @@ export function toPayload(form: ScheduleForm): SchedulePayload {
     starts_at: starts.toISOString(),
     ends_at: ends ? ends.toISOString() : null,
     event_dates: dates.length > 1 ? dates : null,
-    recurrence_note: describeSchedule(dates) || null,
+    // A rule describes itself exactly ("Every 2 weeks on Tue"); a hand-picked
+    // list is summarised from the dates.
+    recurrence_note:
+      dates.length > 1 ? (form.repeat === 'rule' ? describeRule(form) : describeSchedule(dates)) || null : null,
     all_day: !form.start_time,
   }
 }
@@ -213,12 +436,11 @@ export function fromPost(post: Post): ScheduleForm {
   const repeat: RepeatMode = dates.length > 1 ? 'custom' : 'once'
 
   return {
+    ...BLANK_SCHEDULE,
     start_date: start ? dayKey(start) : '',
     start_time: post.all_day || !start ? '' : clock(start),
     end_time: post.all_day || !post.ends_at ? '' : clock(new Date(post.ends_at)),
     repeat,
-    weekdays: [],
-    repeat_until: '',
     custom_dates: dates,
   }
 }

@@ -13,7 +13,7 @@ import type { Audience, Category, Post } from '../lib/types'
 import { isDated } from '../lib/types'
 import { slugify } from '../lib/format'
 import { isColorKey, type EventColorKey } from '../lib/eventColors'
-import { BLANK_SCHEDULE, fromPost, toPayload, type ScheduleForm } from '../lib/schedule'
+import { BLANK_SCHEDULE, applyPreset, fromPost, toPayload, type ScheduleForm } from '../lib/schedule'
 import { Notice, PageHeader, Spinner } from '../components/ui'
 
 const BLANK = {
@@ -64,16 +64,19 @@ export default function PostEditor() {
       audience: params.get('audience') === 'officers' ? ('officers' as Audience) : BLANK.audience,
     }
   })
-  const [schedule, setSchedule] = useState<ScheduleForm>(() =>
-    isNew
-      ? {
-          ...BLANK_SCHEDULE,
-          start_date: params.get('date') ?? '',
-          start_time: params.get('time') ?? '',
-          end_time: params.get('end') ?? '',
-        }
-      : BLANK_SCHEDULE,
-  )
+  const [schedule, setSchedule] = useState<ScheduleForm>(() => {
+    if (!isNew) return BLANK_SCHEDULE
+    const base: ScheduleForm = {
+      ...BLANK_SCHEDULE,
+      start_date: params.get('date') ?? '',
+      start_time: params.get('time') ?? '',
+      end_time: params.get('end') ?? '',
+      repeat_until: params.get('until') ?? '',
+    }
+    // Quick-create's repeat choice — a preset id, or "rule" for Custom….
+    const repeat = params.get('repeat')
+    return repeat && repeat !== 'once' ? applyPreset(base, repeat) : base
+  })
   const [slugTouched, setSlugTouched] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)

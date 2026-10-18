@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { dayKey, fromDayKey, slugify } from '../../lib/format'
-import { BLANK_SCHEDULE, addDays, toPayload, type ScheduleForm } from '../../lib/schedule'
+import { BLANK_SCHEDULE, addDays, applyPreset, defaultUntil, repeatPresets, toPayload, type ScheduleForm } from '../../lib/schedule'
 import { EVENT_COLORS, colorOf, type EventColorKey } from '../../lib/eventColors'
 import type { Audience } from '../../lib/types'
 import { useFloating } from './EventPopover'
@@ -85,7 +85,8 @@ export default function QuickCreate({
   const [allDay, setAllDay] = useState(draft.allDay)
   const [start, setStart] = useState(draft.allDay ? '09:00' : hhmm(draft.start))
   const [end, setEnd] = useState(draft.allDay ? '10:00' : hhmm(draft.end))
-  const [repeat, setRepeat] = useState<'once' | 'weekly'>('once')
+  /** 'once' or a preset id from repeatPresets(). */
+  const [repeat, setRepeat] = useState('once')
   const [until, setUntil] = useState(() => addDays(dayKey(draft.start), 7 * 11))
   const [location, setLocation] = useState('')
   const [hours, setHours] = useState('')
@@ -99,7 +100,22 @@ export default function QuickCreate({
   // meetings — so switching type repaints an untouched card.
   const shownColor = colorOf({ color, category: kind })
 
-  const weekday = fromDayKey(date).toLocaleDateString(undefined, { weekday: 'long' })
+  // Presets follow the date: "Weekly on Wednesday" becomes "on Thursday".
+  // One that no longer exists (the last Friday, moved mid-month) drops back
+  // to "Does not repeat".
+  const presets = useMemo(() => repeatPresets(date), [date])
+  const repeatId = repeat === 'once' || presets.some((p) => p.id === repeat) ? repeat : 'once'
+
+  function pickRepeat(id: string) {
+    // Custom rules and hand-picked dates need the full editor.
+    if (id === 'rule' || id === 'custom') {
+      moreOptions(id)
+      return
+    }
+    setRepeat(id)
+    const freq = presets.find((p) => p.id === id)?.patch.freq
+    if (freq) setUntil(defaultUntil(date, freq))
+  }
 
   // Keep the placeholder on the grid in step with the form.
   useEffect(() => {
@@ -130,14 +146,14 @@ export default function QuickCreate({
     setEnd(SLOTS[((minutes(next) + len) % 1440) / 15])
   }
 
-  const schedule: ScheduleForm = {
+  const baseSchedule: ScheduleForm = {
     ...BLANK_SCHEDULE,
     start_date: date,
     start_time: allDay ? '' : start,
     end_time: allDay ? '' : end,
-    repeat,
-    repeat_until: repeat === 'weekly' ? until : '',
   }
+  const schedule: ScheduleForm =
+    repeatId === 'once' ? baseSchedule : { ...applyPreset(baseSchedule, repeatId), repeat_until: until }
 
   async function save() {
     if (!title.trim()) {
@@ -185,8 +201,13 @@ export default function QuickCreate({
     onSaved()
   }
 
-  function moreOptions() {
+  function moreOptions(repeatOverride?: string) {
     const params = new URLSearchParams({ date, type: kind })
+    const rep = repeatOverride ?? repeatId
+    if (rep !== 'once') {
+      params.set('repeat', rep)
+      if (rep !== 'custom') params.set('until', until)
+    }
     if (kind === 'meeting') params.set('audience', audience)
     if (!allDay) {
       params.set('time', start)
@@ -287,14 +308,21 @@ export default function QuickCreate({
                 All day
               </label>
               <select
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value as 'once' | 'weekly')}
-                className="rounded-md bg-transparent py-1 text-sm hover:bg-[var(--surface-2)]"
+                value={repeatId}
+                onChange={(e) => pickRepeat(e.target.value)}
+                className="max-w-full rounded-md bg-transparent py-1 text-sm hover:bg-[var(--surface-2)]"
               >
                 <option value="once">Does not repeat</option>
-                <option value="weekly">Weekly on {weekday}</option>
+                {presets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+                {/* The full rule builder lives in the editor. */}
+                <option value="rule">Custom…</option>
+                <option value="custom">Pick specific dates…</option>
               </select>
-              {repeat === 'weekly' && (
+              {repeatId !== 'once' && (
                 <label className="flex items-center gap-2">
                   <span className="muted">until</span>
                   <input
@@ -394,7 +422,7 @@ export default function QuickCreate({
         <div className="flex items-center justify-end gap-2 px-5 pb-4 pt-2">
           <button
             type="button"
-            onClick={moreOptions}
+            onClick={() => moreOptions()}
             className="h-9 rounded-full px-4 text-sm font-medium text-navy-600 transition hover:bg-[var(--surface-2)] dark:text-navy-200"
           >
             More options
