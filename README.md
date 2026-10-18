@@ -123,7 +123,7 @@ has the index to uncomment if you want one holder each.
 
 ## Managing the club
 
-All of it happens in the app at `/#/admin`:
+All of it happens in the app at `/admin`:
 
 - **Posts** — write news, notices, and events in Markdown, upload images, pin to the home page, publish or unpublish.
 - **Hours** — log service hours for members; pick an event to pre-select everyone who signed up.

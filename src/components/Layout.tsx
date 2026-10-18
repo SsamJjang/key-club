@@ -64,6 +64,7 @@ function AccountMenu() {
           </div>
           <div className="my-1 border-t border-[var(--line)]" />
           <MenuLink to="/me">My profile</MenuLink>
+          <MenuLink to="/absent">Can’t make it?</MenuLink>
           {isAdmin && <MenuLink to="/admin">Admin</MenuLink>}
           <button
             type="button"

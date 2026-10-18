@@ -1,20 +1,23 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { isConfigured } from '../lib/supabase'
+import { isConfigured, RETURN_TO_KEY } from '../lib/supabase'
 import { Notice, Spinner } from '../components/ui'
 import Logo, { LogoWordmark } from '../components/Logo'
 
 export default function Login() {
   const { session, loading, authError, signIn } = useAuth()
   const [busy, setBusy] = useState(false)
+  const location = useLocation()
+  // Where ProtectedRoute bounced them from — e.g. /absent opened from a text.
+  const from = (location.state as { from?: string } | null)?.from
 
   if (loading) return <Spinner label="Checking your membership" />
-  if (session) return <Navigate to="/" replace />
+  if (session) return <Navigate to={takeReturnTo() ?? from ?? '/'} replace />
 
   async function handleSignIn() {
     setBusy(true)
-    await signIn()
+    await signIn(from)
     setBusy(false)
   }
 
@@ -135,4 +138,16 @@ export default function Login() {
       </div>
     </div>
   )
+}
+
+/** The page saved before the Google round trip, read once. */
+function takeReturnTo() {
+  try {
+    const to = sessionStorage.getItem(RETURN_TO_KEY)
+    sessionStorage.removeItem(RETURN_TO_KEY)
+    // Only ever an in-app path — never somewhere off-site.
+    return to && to.startsWith('/') && !to.startsWith('//') ? to : null
+  } catch {
+    return null
+  }
 }

@@ -133,7 +133,7 @@ export default function EventPopover({
       : clock(start)
 
   function copyLink() {
-    const url = `${window.location.origin}${window.location.pathname}#/post/${event.slug}`
+    const url = `${window.location.origin}/post/${event.slug}`
     void navigator.clipboard?.writeText(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)

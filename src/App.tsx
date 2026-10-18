@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -13,6 +13,7 @@ import MemberProfile from './pages/MemberProfile'
 import MyProfile from './pages/MyProfile'
 import Hours from './pages/Hours'
 import Admin from './pages/Admin'
+import Absent from './pages/Absent'
 import { EmptyState, Spinner } from './components/ui'
 
 // The rich text editor pulls in ProseMirror, which roughly triples the
@@ -20,13 +21,13 @@ import { EmptyState, Spinner } from './components/ui'
 const PostEditor = lazy(() => import('./pages/PostEditor'))
 
 /**
- * Hash routing on purpose: the app ships as static files to Cloudflare
- * Pages or GitHub Pages, neither of which is configured here to rewrite
- * deep links back to index.html.
+ * Real paths (/events, /absent), not /#/events. Cloudflare Pages serves
+ * index.html for every deep link via public/_redirects; old /#/ links are
+ * rewritten in main.tsx before the router ever sees them.
  */
 export default function App() {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="members/:id" element={<MemberProfile />} />
             <Route path="me" element={<MyProfile />} />
             <Route path="hours" element={<Hours />} />
+            <Route path="absent" element={<Absent />} />
 
             <Route
               path="admin"
@@ -79,6 +81,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
-    </HashRouter>
+    </BrowserRouter>
   )
 }

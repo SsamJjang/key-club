@@ -89,7 +89,7 @@ function vevent(instance: Instance, siteUrl: string) {
     event.summary ?? plainText(event.body),
     event.service_hours ? `Service hours: ${event.service_hours}` : '',
     event.hours_tbd ? 'Service hours: TBD' : '',
-    siteUrl ? `${siteUrl}#/post/${event.slug}` : '',
+    siteUrl ? `${siteUrl.replace(/\/+$/, '')}/post/${event.slug}` : '',
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -97,7 +97,7 @@ function vevent(instance: Instance, siteUrl: string) {
   if (details) lines.push(`DESCRIPTION:${esc(details)}`)
   if (event.location) lines.push(`LOCATION:${esc(event.location)}`)
   if (event.calendar_label) lines.push(`CATEGORIES:${esc(event.calendar_label)}`)
-  if (siteUrl) lines.push(`URL:${siteUrl}#/post/${event.slug}`)
+  if (siteUrl) lines.push(`URL:${siteUrl.replace(/\/+$/, '')}/post/${event.slug}`)
 
   // Half an hour is enough warning to walk somewhere on a school campus.
   lines.push('BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', `DESCRIPTION:${esc(event.title)}`, 'END:VALARM')

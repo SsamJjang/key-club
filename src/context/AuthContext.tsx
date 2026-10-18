@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase, redirectUrl, isConfigured } from '../lib/supabase'
+import { supabase, redirectUrl, isConfigured, RETURN_TO_KEY } from '../lib/supabase'
 import type { Profile } from '../lib/types'
 import { canPublish } from '../lib/types'
 
@@ -12,7 +12,8 @@ interface AuthValue {
   /** Set when Google sent us back with a rejection (e.g. not on the roster). */
   authError: string | null
   clearAuthError: () => void
-  signIn: () => Promise<void>
+  /** returnTo: the page to land on once Google sends the member back. */
+  signIn: (returnTo?: string) => Promise<void>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   isAdmin: boolean
@@ -25,7 +26,7 @@ const AuthContext = createContext<AuthValue | null>(null)
  * surfaces here as an opaque "Database error saving new user". Translate it.
  */
 function readCallbackError(): string | null {
-  const hash = new URLSearchParams(window.location.hash.replace(/^#\/?/, ''))
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
   const query = new URLSearchParams(window.location.search)
   const raw =
     hash.get('error_description') ??
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const err = readCallbackError()
     if (err) {
       setAuthError(err)
-      window.history.replaceState({}, '', window.location.pathname + '#/login')
+      window.history.replaceState({}, '', import.meta.env.BASE_URL + 'login')
     }
   }, [])
 
@@ -110,8 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe()
   }, [loadProfile])
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (returnTo?: string) => {
     setAuthError(null)
+    try {
+      if (returnTo && returnTo !== '/') sessionStorage.setItem(RETURN_TO_KEY, returnTo)
+      else sessionStorage.removeItem(RETURN_TO_KEY)
+    } catch {
+      // Storage blocked: they land on Home instead. Not worth failing sign-in.
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

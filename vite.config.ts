@@ -2,10 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// base: './' keeps asset URLs relative, so the same build works at the root
-// (Cloudflare Pages) or under /key-club/ (GitHub Pages project site).
-// Routing is hash-based for the same reason — no server rewrites required.
+// base: '/' — routes are real paths now, so /post/some-slug must still load
+// /assets/... from the root rather than /post/assets/.... Cloudflare Pages
+// rewrites every deep link to index.html via public/_redirects.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: './',
+  base: '/',
 })

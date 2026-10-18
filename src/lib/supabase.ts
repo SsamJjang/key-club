@@ -22,13 +22,13 @@ export const supabase = createClient(url ?? 'http://localhost', anonKey ?? 'anon
 })
 
 /**
- * Where Google sends the browser back to. Hash routing means the app lives
- * at the document root no matter which host serves it, so the origin plus
- * the deploy sub-path is exactly right.
+ * Where Google sends the browser back to: always the app root, whatever page
+ * the member was on, so the one URL in Supabase's redirect allow-list keeps
+ * working. The page they were heading for is remembered separately.
  */
 export function redirectUrl() {
-  // The current document path is, by definition, where the app is served
-  // from — root on Cloudflare Pages, /key-club/ on a GitHub Pages project
-  // site. Drop the hash so Supabase gets a clean callback target.
-  return window.location.origin + window.location.pathname
+  return window.location.origin + import.meta.env.BASE_URL
 }
+
+/** sessionStorage key for "send me back here after Google". */
+export const RETURN_TO_KEY = 'kc:return-to'

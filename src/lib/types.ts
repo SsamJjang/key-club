@@ -92,6 +92,22 @@ export interface EventSignup {
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
 }
 
+/** "I can't make it" / "I'll be late" — one per member per event date. */
+export interface EventAbsence {
+  id: string
+  post_id: string
+  user_id: string
+  /** Same meaning as EventSignup.occurs_on: null for a single-date event. */
+  occurs_on: string | null
+  kind: 'absent' | 'late'
+  /** Late only — free text, e.g. "4:15" or "after practice". */
+  arrives: string | null
+  reason: string | null
+  created_at: string
+  updated_at: string
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
+}
+
 export interface HoursEntry {
   id: string
   user_id: string
