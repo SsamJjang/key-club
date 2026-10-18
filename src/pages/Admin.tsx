@@ -7,8 +7,9 @@ import { CategoryBadge, EmptyState, Notice, PageHeader, Spinner, Stat } from '..
 import MembersTab from '../components/admin/MembersTab'
 import HoursTab from '../components/admin/HoursTab'
 import FundraisersTab from '../components/admin/FundraisersTab'
+import AbsencesTab from '../components/admin/AbsencesTab'
 
-type Tab = 'posts' | 'hours' | 'fundraisers' | 'members' | 'settings'
+type Tab = 'posts' | 'hours' | 'fundraisers' | 'absences' | 'members' | 'settings'
 
 function SettingsTab() {
   const [settings, setSettings] = useState<ClubSettings | null>(null)
@@ -322,6 +323,7 @@ export default function Admin() {
     { key: 'posts', label: 'Posts' },
     { key: 'hours', label: 'Hours' },
     { key: 'fundraisers', label: 'Fundraisers' },
+    { key: 'absences', label: 'Absences' },
     { key: 'members', label: 'Members' },
     { key: 'settings', label: 'Settings' },
   ]
@@ -364,6 +366,7 @@ export default function Admin() {
       {tab === 'posts' && <PostsTab />}
       {tab === 'hours' && <HoursTab />}
       {tab === 'fundraisers' && <FundraisersTab />}
+      {tab === 'absences' && <AbsencesTab />}
       {tab === 'members' && <MembersTab />}
       {tab === 'settings' && <SettingsTab />}
     </div>

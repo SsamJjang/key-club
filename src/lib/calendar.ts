@@ -1,6 +1,6 @@
 import { dayKey, fromDayKey, hasEnded, isRecurring, occurrenceEnded, occurrences } from './format'
 import type { SignupRow } from './rsvp'
-import type { Post } from './types'
+import type { EventAbsence, Post } from './types'
 import { colorOf, type EventColorKey } from './eventColors'
 
 /**
@@ -20,6 +20,8 @@ export interface CalendarEvent extends Post {
   mine: boolean
   /** Raw rows, so a single day can count just its own date. */
   signups: SignupRow[]
+  /** "Can't make it" / "late" notices: all of them for officers, your own otherwise. */
+  absences: EventAbsence[]
 }
 
 export interface Instance {
@@ -36,7 +38,7 @@ export interface Instance {
 
 export type ViewMode = 'month' | 'week' | 'day' | 'agenda'
 
-export type Status = 'past' | 'going' | 'full' | 'closed' | 'open'
+export type Status = 'past' | 'going' | 'full' | 'closed' | 'open' | 'declined'
 
 export const MINUTES_PER_DAY = 1440
 /** Pixel height of one hour in the week and day grids. */
@@ -228,6 +230,9 @@ export function statusOf(event: CalendarEvent, day: Date | null, userId: string 
 
   const past = series && day ? occurrenceEnded(event, day) : hasEnded(event)
   if (past) return 'past'
+  // A meeting has no sign-ups: if you can see it you're invited, so you're
+  // going unless you declined that date.
+  if (event.category === 'meeting') return declined(event, key, userId) ? 'declined' : 'going'
   if (mine) return 'going'
   // Capacity is per date for a series — twenty spots at each session.
   if (event.capacity && rows.length >= event.capacity) return 'full'
@@ -241,6 +246,13 @@ export const STATUS_LABEL: Record<Status, string> = {
   full: 'Full',
   closed: 'Sign-ups closed',
   open: 'Open for sign-ups',
+  declined: 'You declined',
+}
+
+/** Has this member declined (said "can't make it" to) this date? */
+export function declined(event: CalendarEvent, key: string | null, userId: string | null) {
+  if (!userId) return false
+  return event.absences.some((a) => a.user_id === userId && a.kind === 'absent' && a.occurs_on === key)
 }
 
 /** Sign-up numbers for one instance — a series counts only its own date. */

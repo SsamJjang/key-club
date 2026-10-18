@@ -52,6 +52,7 @@ const BY_KEY = new Map(EVENT_COLORS.map((c) => [c.key, c]))
  */
 const CATEGORY_DEFAULT: Record<Category, EventColorKey> = {
   event: 'peacock',
+  meeting: 'grape',
   news: 'graphite',
   notice: 'banana',
 }

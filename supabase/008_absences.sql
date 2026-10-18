@@ -5,7 +5,12 @@
 -- an upcoming event or meeting. Page: /absent.
 --
 -- Private between the member and the officers: other members never see
--- who is out or why.
+-- who is out or why. Officers read them in Admin → Absences and on each
+-- event's page and calendar card.
+--
+-- sent_at records when the notice was given, so officers can tell a
+-- day-ahead heads-up from a text an hour before. The app counts 12+
+-- hours before the event as advance notice.
 --
 -- Run after 007. Safe to re-run.
 -- =====================================================================
@@ -22,9 +27,17 @@ create table if not exists public.event_absences (
   -- practice") because members don't know to the minute.
   arrives     text check (arrives is null or length(arrives) <= 60),
   reason      text check (reason is null or length(reason) <= 500),
+  -- When this notice was given. Set by the trigger below, never by the
+  -- client: on insert, and again whenever kind changes ("late" turning
+  -- into "absent" an hour before is a new, short-notice message). Fixing
+  -- a typo in the reason doesn't move it.
+  sent_at     timestamptz not null default now(),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+
+alter table public.event_absences
+  add column if not exists sent_at timestamptz not null default now();
 
 -- One notice per member per date. Saying "late" after "absent" replaces it.
 -- COALESCE for the same reason as event_signups_one_per_date: NULL never
@@ -59,15 +72,24 @@ create policy absences_delete_own on public.event_absences
   for delete to authenticated
   using (user_id = auth.uid() or public.is_admin());
 
-create or replace function public.touch_event_absence()
+create or replace function public.stamp_event_absence()
 returns trigger language plpgsql as $fn$
 begin
+  if tg_op = 'INSERT' then
+    new.sent_at    := now();
+    new.created_at := now();
+  else
+    new.created_at := old.created_at;
+    new.sent_at := case when new.kind is distinct from old.kind then now() else old.sent_at end;
+  end if;
   new.updated_at := now();
   return new;
 end
 $fn$;
 
 drop trigger if exists event_absences_touch on public.event_absences;
-create trigger event_absences_touch
-  before update on public.event_absences
-  for each row execute function public.touch_event_absence();
+drop trigger if exists event_absences_stamp on public.event_absences;
+create trigger event_absences_stamp
+  before insert or update on public.event_absences
+  for each row execute function public.stamp_event_absence();
+drop function if exists public.touch_event_absence();

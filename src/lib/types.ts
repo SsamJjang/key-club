@@ -1,5 +1,7 @@
 export type Role = 'member' | 'officer' | 'admin'
-export type Category = 'news' | 'notice' | 'event'
+export type Category = 'news' | 'notice' | 'event' | 'meeting'
+/** Who a meeting invites. Officers = officer/admin role or a board seat. */
+export type Audience = 'everyone' | 'officers'
 export type HoursStatus = 'pending' | 'approved' | 'rejected'
 
 export interface BoardPosition {
@@ -72,6 +74,8 @@ export interface Post {
   color: string | null
   /** What the colour MEANS here — "Service", "Board meeting". Optional. */
   calendar_label: string | null
+  /** Meetings only: who's invited. Null on every other type. */
+  audience: Audience | null
   created_at: string
   updated_at: string
   author?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'title'> | null
@@ -103,6 +107,8 @@ export interface EventAbsence {
   /** Late only — free text, e.g. "4:15" or "after practice". */
   arrives: string | null
   reason: string | null
+  /** When the notice was given; moves only when kind changes. Server-set. */
+  sent_at: string
   created_at: string
   updated_at: string
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
@@ -166,6 +172,17 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   news: 'News',
   notice: 'Notice',
   event: 'Event',
+  meeting: 'Meeting',
+}
+
+export const AUDIENCE_LABEL: Record<Audience, string> = {
+  everyone: 'Everyone',
+  officers: 'Officers',
+}
+
+/** Types that live on the calendar: they have dates, times and colours. */
+export function isDated(category: Category | undefined) {
+  return category === 'event' || category === 'meeting'
 }
 
 export function canPublish(role: Role | undefined) {

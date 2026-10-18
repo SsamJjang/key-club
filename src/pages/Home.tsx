@@ -41,6 +41,7 @@ export default function Home() {
           .select(POST_SELECT)
           .eq('published', true)
           .eq('pinned', true)
+          .neq('category', 'meeting')
           .order('created_at', { ascending: false })
           .limit(1),
         supabase

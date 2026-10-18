@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { EventAbsence, Post } from '../lib/types'
 import { dayKey, formatOccurrence, occurrenceEnded, occurrences } from '../lib/format'
 import { removeSignup, signupKey } from '../lib/rsvp'
-import { Avatar, EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
+import { ADVANCE_HOURS, KIND_LABEL, sentLine } from '../lib/absence'
+import { EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
 
 /**
  * "I can't go" / "I'll be late" for an upcoming event or meeting.
  *
  * One notice per member per date — saying "late" after "can't go" replaces
- * it. Notices are private to the member and officers; officers get a
- * "Heads-ups" list of everyone who's out below the form.
+ * it. Notices are private to the member and officers, who read them in
+ * Admin → Absences and on each event's page and calendar card.
  */
 
 type Kind = EventAbsence['kind']
@@ -29,10 +30,8 @@ type Slot = {
 
 const slotId = (postId: string, key: string | null) => `${postId}:${key ?? ''}`
 
-const KIND_LABEL: Record<Kind, string> = { absent: 'Can’t make it', late: 'Running late' }
-
 export default function Absent() {
-  const { profile, isAdmin } = useAuth()
+  const { profile } = useAuth()
   const [params, setParams] = useSearchParams()
   const [posts, setPosts] = useState<Post[]>([])
   const [absences, setAbsences] = useState<EventAbsence[]>([])
@@ -54,13 +53,10 @@ export default function Absent() {
         .from('posts')
         .select('*')
         .eq('published', true)
-        .eq('category', 'event')
+        .in('category', ['event', 'meeting'])
         .order('starts_at', { ascending: true }),
-      // RLS already narrows members to their own rows; officers get all.
-      supabase
-        .from('event_absences')
-        .select('*, profile:profiles!user_id(id, full_name, avatar_url, grade)')
-        .order('created_at', { ascending: false }),
+      // Only your own, even for officers — this page is the member's side.
+      supabase.from('event_absences').select('*').eq('user_id', profile.id),
       supabase.from('event_signups').select('post_id, occurs_on').eq('user_id', profile.id),
     ])
     if (postsRes.error || absRes.error) setError((postsRes.error ?? absRes.error)!.message)
@@ -102,11 +98,14 @@ export default function Absent() {
     return m
   }, [absences, profile?.id])
 
-  // ?event=<slug> preselects that event's next date — for links from a post.
+  // ?event=<slug>[&date=YYYY-MM-DD] preselects that event (that date, or
+  // its next one) — for the links on event pages and calendar cards.
   useEffect(() => {
     const slug = params.get('event')
     if (!slug || selected || slots.length === 0) return
-    const first = slots.find((s) => s.post.slug === slug)
+    const date = params.get('date')
+    const ofEvent = slots.filter((s) => s.post.slug === slug)
+    const first = ofEvent.find((s) => s.key === date) ?? ofEvent[0]
     if (first) pick(first.id)
     // pick reads `mine`, which is ready whenever slots are.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,16 +182,6 @@ export default function Absent() {
   const myUpcoming = [...mine.entries()]
     .filter(([id]) => slotById.has(id))
     .sort(([a], [b]) => slotById.get(a)!.at.getTime() - slotById.get(b)!.at.getTime())
-  const others = isAdmin
-    ? absences
-        .filter((a) => slotById.has(slotId(a.post_id, a.occurs_on)))
-        .sort(
-          (a, b) =>
-            slotById.get(slotId(a.post_id, a.occurs_on))!.at.getTime() -
-            slotById.get(slotId(b.post_id, b.occurs_on))!.at.getTime(),
-        )
-    : []
-
   return (
     <div className="rise">
       <PageHeader
@@ -320,6 +309,13 @@ export default function Absent() {
                   />
                 </div>
 
+                {current.at.getTime() - Date.now() < ADVANCE_HOURS * 36e5 &&
+                  mine.get(current.id)?.kind !== kind && (
+                    <p className="text-xs text-red-700 dark:text-red-300">
+                      This is less than {ADVANCE_HOURS} hours away, so officers will see it as short notice.
+                    </p>
+                  )}
+
                 {kind === 'absent' && mySignups.has(current.id) && (
                   <p className="text-xs muted">You’re signed up for this — sending will take you off the list.</p>
                 )}
@@ -351,6 +347,7 @@ export default function Absent() {
                             {formatOccurrence(s.at, s.post.all_day)} · {KIND_LABEL[a.kind]}
                             {a.arrives ? ` (${a.arrives})` : ''}
                           </span>
+                          <span className="block truncate text-xs faint">{sentLine(s.post, a)}</span>
                         </span>
                         <button type="button" className="text-xs font-semibold muted hover:text-[var(--ink)]" onClick={() => pick(id)}>
                           Edit
@@ -370,45 +367,6 @@ export default function Absent() {
             )}
           </aside>
         </div>
-      )}
-
-      {isAdmin && (
-        <section className="mt-14">
-          <p className="eyebrow">Officers</p>
-          <h2 className="display mt-1.5 mb-5 text-3xl sm:text-4xl">Heads-ups</h2>
-          {others.length === 0 ? (
-            <div className="card p-5 text-sm muted">Nobody has said they’ll be out or late.</div>
-          ) : (
-            <ul className="card divide-y divide-[var(--line)]">
-              {others.map((a) => {
-                const s = slotById.get(slotId(a.post_id, a.occurs_on))!
-                return (
-                  <li key={a.id} className="flex items-start gap-3 px-4 py-3">
-                    <Avatar name={a.profile?.full_name ?? '?'} url={a.profile?.avatar_url} size={36} />
-                    <div className="min-w-0 flex-1 text-sm">
-                      <p>
-                        <Link to={`/members/${a.user_id}`} className="font-semibold hover:underline">
-                          {a.profile?.full_name ?? 'A member'}
-                        </Link>{' '}
-                        <span className="muted">
-                          {a.kind === 'absent' ? 'can’t make' : 'will be late to'}
-                        </span>{' '}
-                        <Link to={`/post/${s.post.slug}`} className="font-semibold hover:underline">
-                          {s.post.title}
-                        </Link>
-                      </p>
-                      <p className="muted">
-                        {formatOccurrence(s.at, s.post.all_day)}
-                        {a.arrives ? ` · arriving ${a.arrives}` : ''}
-                      </p>
-                      {a.reason && <p className="mt-1 whitespace-pre-line">{a.reason}</p>}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
       )}
     </div>
   )

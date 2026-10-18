@@ -9,7 +9,8 @@ import { uploadTracker } from '../lib/images'
 import { bodyImages } from '../lib/gallery'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { Category, Post } from '../lib/types'
+import type { Audience, Category, Post } from '../lib/types'
+import { isDated } from '../lib/types'
 import { slugify } from '../lib/format'
 import { isColorKey, type EventColorKey } from '../lib/eventColors'
 import { BLANK_SCHEDULE, fromPost, toPayload, type ScheduleForm } from '../lib/schedule'
@@ -33,6 +34,7 @@ const BLANK = {
   signup_open: true,
   color: null as EventColorKey | null,
   calendar_label: '',
+  audience: 'everyone' as Audience,
 }
 
 export default function PostEditor() {
@@ -104,6 +106,7 @@ export default function PostEditor() {
             signup_open: p.signup_open,
             color: isColorKey(p.color) ? p.color : null,
             calendar_label: p.calendar_label ?? '',
+            audience: p.audience ?? 'everyone',
           })
           setSchedule(fromPost(p))
           setSlugTouched(true)
@@ -116,7 +119,11 @@ export default function PostEditor() {
     }
   }, [id, isNew])
 
+  // Events and meetings share the calendar fields; only events take
+  // sign-ups and award hours. A meeting invites an audience instead.
   const isEvent = form.category === 'event'
+  const isMeeting = form.category === 'meeting'
+  const dated = isDated(form.category)
 
   const bodyPhotos = useMemo(() => bodyImages(form.body), [form.body])
 
@@ -145,7 +152,7 @@ export default function PostEditor() {
     // A news post or notice keeps none of the event columns, so switching an
     // event back to "News article" clears its dates rather than leaving them
     // to haunt the calendar.
-    const dates = isEvent
+    const dates = dated
       ? toPayload(schedule)
       : { starts_at: null, ends_at: null, event_dates: null, recurrence_note: null, all_day: false }
 
@@ -156,19 +163,21 @@ export default function PostEditor() {
       body: form.body,
       category: form.category,
       cover_url: form.cover_url.trim() || null,
-      pinned: form.pinned,
+      // Meetings never reach the feed, so there's no home page to pin them to.
+      pinned: isMeeting ? false : form.pinned,
       published: publish ?? form.published,
       author_id: profile?.id ?? null,
       ...dates,
-      location: isEvent ? form.location.trim() || null : null,
+      location: dated ? form.location.trim() || null : null,
       // TBD and a number are mutually exclusive — the database enforces it too.
       service_hours: isEvent && !form.hours_tbd && form.service_hours ? Number(form.service_hours) : null,
       hours_tbd: isEvent && form.hours_tbd,
       capacity: isEvent && form.capacity ? Number(form.capacity) : null,
       signup_open: isEvent ? form.signup_open : true,
       // Colour is a calendar concern, so it travels with events only.
-      color: isEvent ? form.color : null,
-      calendar_label: isEvent ? form.calendar_label.trim() || null : null,
+      color: dated ? form.color : null,
+      calendar_label: dated ? form.calendar_label.trim() || null : null,
+      audience: isMeeting ? form.audience : null,
     }
 
     const { error } = isNew
@@ -248,6 +257,7 @@ export default function PostEditor() {
                   onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
                 >
                   <option value="event">Event</option>
+                  <option value="meeting">Meeting</option>
                   <option value="news">News article</option>
                   <option value="notice">Notice</option>
                 </select>
@@ -313,7 +323,10 @@ export default function PostEditor() {
               />
               Published (visible to all members)
             </label>
-            <label className="flex items-center gap-3 text-sm">
+            {isMeeting && (
+              <p className="text-xs muted">Meetings show on the Events calendar only, not in News.</p>
+            )}
+            {!isMeeting && <label className="flex items-center gap-3 text-sm">
               <input
                 type="checkbox"
                 checked={form.pinned}
@@ -321,10 +334,42 @@ export default function PostEditor() {
                 className="size-4"
               />
               Pin to the top of the home page
-            </label>
+            </label>}
           </div>
 
-          {isEvent && (
+          {isMeeting && (
+            <div className="card space-y-3 p-6">
+              <h2 className="label">Invite</h2>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Who’s invited">
+                {([
+                  { key: 'everyone', label: 'Everyone', hint: 'Every member' },
+                  { key: 'officers', label: 'Officers', hint: 'Officers and board only' },
+                ] as const).map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={form.audience === o.key}
+                    onClick={() => setForm({ ...form, audience: o.key })}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      form.audience === o.key
+                        ? 'border-navy-600 bg-navy-600 text-white'
+                        : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">{o.label}</span>
+                    <span className={`block text-xs ${form.audience === o.key ? 'text-white/80' : 'muted'}`}>{o.hint}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs muted">
+                No sign-ups: invited members are expected, and can decline if they can’t come.
+                {form.audience === 'officers' && ' Members who aren’t invited won’t see it.'}
+              </p>
+            </div>
+          )}
+
+          {dated && (
             <div className="card space-y-4 p-6">
               <h2 className="label">When</h2>
               <EventSchedule value={schedule} onChange={setSchedule} />
@@ -339,57 +384,61 @@ export default function PostEditor() {
                   placeholder="Community food bank"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label" htmlFor="sh">Service hours</label>
-                  <input
-                    id="sh"
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    className="field"
-                    value={form.hours_tbd ? '' : form.service_hours}
-                    disabled={form.hours_tbd}
-                    placeholder={form.hours_tbd ? 'TBD' : 'None'}
-                    onChange={(e) => setForm({ ...form, service_hours: e.target.value })}
-                  />
+              {isEvent && (
+                <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label" htmlFor="sh">Service hours</label>
+                    <input
+                      id="sh"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      className="field"
+                      value={form.hours_tbd ? '' : form.service_hours}
+                      disabled={form.hours_tbd}
+                      placeholder={form.hours_tbd ? 'TBD' : 'None'}
+                      onChange={(e) => setForm({ ...form, service_hours: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="cap">Capacity</label>
+                    <input
+                      id="cap"
+                      type="number"
+                      min="1"
+                      className="field"
+                      value={form.capacity}
+                      onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+                      placeholder="No limit"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="label" htmlFor="cap">Capacity</label>
+                <label className="flex items-center gap-3 text-sm">
                   <input
-                    id="cap"
-                    type="number"
-                    min="1"
-                    className="field"
-                    value={form.capacity}
-                    onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-                    placeholder="No limit"
+                    type="checkbox"
+                    checked={form.hours_tbd}
+                    onChange={(e) => setForm({ ...form, hours_tbd: e.target.checked })}
+                    className="size-4"
                   />
-                </div>
-              </div>
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.hours_tbd}
-                  onChange={(e) => setForm({ ...form, hours_tbd: e.target.checked })}
-                  className="size-4"
-                />
-                <span>
-                  Service hours are TBD
-                  <span className="block text-xs muted">
-                    Shows “TBD” instead of a number, so members still sign up.
+                  <span>
+                    Service hours are TBD
+                    <span className="block text-xs muted">
+                      Shows “TBD” instead of a number, so members still sign up.
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.signup_open}
-                  onChange={(e) => setForm({ ...form, signup_open: e.target.checked })}
-                  className="size-4"
-                />
-                Sign-ups open
-              </label>
+                </label>
+                <label className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.signup_open}
+                    onChange={(e) => setForm({ ...form, signup_open: e.target.checked })}
+                    className="size-4"
+                  />
+                  Sign-ups open
+                </label>
+                </>
+              )}
 
               <div className="border-t border-[var(--line)] pt-4">
                 <ColorPicker

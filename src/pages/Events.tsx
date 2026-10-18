@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { loadAbsences, toggleDecline } from '../lib/absence'
 import { useAuth } from '../context/AuthContext'
 import type { Post } from '../lib/types'
 import { addSignup, distinctMembers, removeSignup, signupKey } from '../lib/rsvp'
@@ -23,14 +24,15 @@ export default function Events() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [eventsRes, signupsRes] = await Promise.all([
+    const [eventsRes, signupsRes, absRes] = await Promise.all([
       supabase
         .from('posts')
         .select('*')
         .eq('published', true)
-        .eq('category', 'event')
+        .in('category', ['event', 'meeting'])
         .order('starts_at', { ascending: true }),
       supabase.from('event_signups').select('post_id, user_id, occurs_on'),
+      loadAbsences(),
     ])
 
     if (eventsRes.error) setError(eventsRes.error.message)
@@ -48,6 +50,7 @@ export default function Events() {
           going: distinctMembers(mine),
           mine: mine.some((s) => s.user_id === profile?.id),
           signups: mine,
+          absences: absRes.rows.filter((a) => a.post_id === e.id),
         }
       }),
     )
@@ -71,6 +74,17 @@ export default function Events() {
       setError(null)
 
       const key = signupKey(event, day)
+
+      // A meeting's Yes / No is "not declined" / "declined".
+      if (event.category === 'meeting') {
+        const mine = event.absences.find((a) => a.user_id === profile.id && a.occurs_on === key)
+        const { error } = await toggleDecline(event.id, profile.id, key, mine)
+        if (error) setError(error.message)
+        await load()
+        setBusyId(null)
+        return
+      }
+
       const has = event.signups.some((s) => s.user_id === profile.id && s.occurs_on === key)
 
       const { error } = has

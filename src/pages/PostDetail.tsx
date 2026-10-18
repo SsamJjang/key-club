@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { EventSignup, Post } from '../lib/types'
+import type { EventAbsence, EventSignup, Post } from '../lib/types'
+import { AUDIENCE_LABEL, isDated } from '../lib/types'
+import { KIND_LABEL, absencesOn, loadAbsences, toggleDecline } from '../lib/absence'
+import AbsenceList from '../components/AbsenceList'
 import {
   dayKey,
   formatDate,
@@ -38,6 +41,8 @@ export default function PostDetail() {
   /** Which date of a series is on screen. Null = "whichever is next up". */
   const [pickedDate, setPickedDate] = useState<string | null>(null)
   const [signups, setSignups] = useState<EventSignup[]>([])
+  /** Officers get everyone's; members only their own (RLS). */
+  const [absences, setAbsences] = useState<EventAbsence[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +73,10 @@ export default function PostDetail() {
       setPost(found)
       setLoading(false)
       if (found?.category === 'event') await loadSignups(found.id)
+      if (isDated(found?.category)) {
+        const abs = await loadAbsences(found!.id)
+        if (!cancelled) setAbsences(abs.rows)
+      }
     }
 
     void load()
@@ -96,6 +105,18 @@ export default function PostDetail() {
 
     if (error) setError(error.message)
     await loadSignups(post.id)
+    setBusy(false)
+  }
+
+  /** Meetings: decline the date on screen, or take it back. */
+  async function decline(key: string | null, existing: EventAbsence | undefined) {
+    if (!post || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error } = await toggleDecline(post.id, profile.id, key, existing)
+    if (error) setError(error.message)
+    const abs = await loadAbsences(post.id)
+    setAbsences(abs.rows)
     setBusy(false)
   }
 
@@ -128,7 +149,9 @@ export default function PostDetail() {
     )
   }
 
-  const isEvent = post.category === 'event'
+  const isEvent = isDated(post.category)
+  // A meeting shares the event layout, minus sign-ups: you're invited.
+  const meeting = post.category === 'meeting'
   const dates = occurrences(post)
   const series = isRecurring(post)
   // For a series, the next date still to come; once it's over, the last one.
@@ -148,6 +171,9 @@ export default function PostDetail() {
   const dateRows = series ? signups.filter((s) => s.occurs_on === shownKey) : signups
   const dateGoing = dateRows.length
   const dateMine = dateRows.some((s) => s.user_id === profile?.id)
+  const dateAbsences = absencesOn(post, absences, shownDate)
+  const myAbsence = dateAbsences.find((a) => a.user_id === profile?.id)
+  const absentHref = `/absent?event=${post.slug}${shownKey ? `&date=${shownKey}` : ''}`
 
   // Capacity is per date for a series: twenty spots means twenty at each
   // session, not twenty people spread across the term.
@@ -159,7 +185,7 @@ export default function PostDetail() {
   // "closed" for all of them is what made this confusing to debug.
   const ended = series && shownDate ? occurrenceEnded(post, shownDate) : hasEnded(post)
   const closed = !post.signup_open
-  const canJoin = isEvent && !ended && !closed && !dateFull
+  const canJoin = post.category === 'event' && !ended && !closed && !dateFull
 
   const rsvpLabel = busy
     ? 'Saving…'
@@ -179,8 +205,8 @@ export default function PostDetail() {
 
   return (
     <article className="rise mx-auto max-w-3xl">
-      <Link to="/news" className="text-sm font-semibold muted hover:underline">
-        ← Back to the feed
+      <Link to={meeting ? '/events' : '/news'} className="text-sm font-semibold muted hover:underline">
+        ← Back to the {meeting ? 'calendar' : 'feed'}
       </Link>
 
       <header className="mt-6">
@@ -298,6 +324,12 @@ export default function PostDetail() {
                 </dd>
               </div>
             ) : null}
+            {meeting ? (
+              <div>
+                <dt className="label">Invited</dt>
+                <dd className="font-medium">{AUDIENCE_LABEL[post.audience ?? 'everyone']}</dd>
+              </div>
+            ) : (
             <div>
               <dt className="label">Signed up</dt>
               <dd className="font-medium">
@@ -314,6 +346,7 @@ export default function PostDetail() {
                 )}
               </dd>
             </div>
+            )}
           </dl>
 
           {/* The date switcher. Picking a tab changes which date the panel
@@ -325,9 +358,11 @@ export default function PostDetail() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="label mb-0">Pick a date</p>
                 <p className="text-xs muted">
-                  {myDates > 0
-                    ? `You’re down for ${myDates} of ${dates.length}`
-                    : `${dates.length} dates — sign up for any`}
+                  {meeting
+                    ? `${dates.length} dates`
+                    : myDates > 0
+                      ? `You’re down for ${myDates} of ${dates.length}`
+                      : `${dates.length} dates — sign up for any`}
                 </p>
               </div>
 
@@ -341,6 +376,8 @@ export default function PostDetail() {
                   const done = occurrenceEnded(post, d)
                   const rows = signups.filter((s) => s.occurs_on === key)
                   const isMine = rows.some((s) => s.user_id === profile?.id)
+                  const isDeclined =
+                    meeting && absences.some((a) => a.user_id === profile?.id && a.kind === 'absent' && a.occurs_on === key)
                   const active = key === shownKey
 
                   return (
@@ -359,12 +396,13 @@ export default function PostDetail() {
                       }`}
                     >
                       {isMine && <span aria-hidden>✓</span>}
+                      {isDeclined && <span aria-hidden>✕</span>}
                       {d.toLocaleDateString(undefined, {
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
                       })}
-                      <span className={active ? 'opacity-70' : 'muted'}>· {rows.length}</span>
+                      {!meeting && <span className={active ? 'opacity-70' : 'muted'}>· {rows.length}</span>}
                     </button>
                   )
                 })}
@@ -397,6 +435,44 @@ export default function PostDetail() {
               </p>
             )}
 
+            {meeting ? (
+              <div className={series ? 'mt-3' : ''}>
+                {ended ? (
+                  <p className="text-sm muted">This {series ? 'date' : 'meeting'} has already happened.</p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-medium">Coming?</span>
+                    <button
+                      type="button"
+                      className={`btn ${myAbsence?.kind === 'absent' ? 'btn-ghost' : 'btn-primary'}`}
+                      disabled={busy || myAbsence?.kind !== 'absent'}
+                      onClick={() => void decline(shownKey, myAbsence)}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${myAbsence?.kind === 'absent' ? 'btn-primary' : 'btn-ghost'}`}
+                      disabled={busy || myAbsence?.kind === 'absent'}
+                      onClick={() => void decline(shownKey, myAbsence)}
+                    >
+                      Can’t make it
+                    </button>
+                    {myAbsence?.kind !== 'absent' && (
+                      <Link to={absentHref} className="text-sm muted underline">
+                        {myAbsence?.kind === 'late'
+                          ? `You said: late${myAbsence.arrives ? ` (${myAbsence.arrives})` : ''}`
+                          : 'Running late?'}
+                      </Link>
+                    )}
+                    {myAbsence?.kind === 'absent' && (
+                      <Link to={absentHref} className="text-sm muted underline">Add a reason</Link>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* How full this date is — the nudge to sign up. */}
             <div className={series ? 'mt-3' : ''}>
               <div className="flex items-center justify-between text-sm">
@@ -459,9 +535,18 @@ export default function PostDetail() {
                 </>
               )}
 
-              {dateMine ? (
+              {myAbsence ? (
+                <span className="text-sm muted">
+                  You told officers: {KIND_LABEL[myAbsence.kind].toLowerCase()}
+                  {myAbsence.arrives ? ` (${myAbsence.arrives})` : ''} ·{' '}
+                  <Link to={absentHref} className="font-semibold underline">Change</Link>
+                </span>
+              ) : dateMine ? (
                 <span className="text-sm text-emerald-700 dark:text-emerald-300">
-                  You’re signed up. See you there.
+                  You’re signed up. See you there.{' '}
+                  {!ended && (
+                    <Link to={absentHref} className="muted underline">Can’t make it?</Link>
+                  )}
                 </span>
               ) : (
                 !canJoin && (
@@ -518,6 +603,17 @@ export default function PostDetail() {
                 </ul>
               )}
             </div>
+            </>
+            )}
+
+            {isAdmin && dateAbsences.length > 0 && (
+              <div className="mt-5 border-t border-[var(--line)] pt-4">
+                <p className="label">Not coming / late · officers only</p>
+                <div className="mt-3">
+                  <AbsenceList post={post} rows={dateAbsences} />
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

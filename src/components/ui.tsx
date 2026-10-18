@@ -39,6 +39,7 @@ const CATEGORY_STYLE: Record<Category, string> = {
   news: 'bg-navy-100 text-navy-700 dark:bg-navy-800 dark:text-navy-100',
   notice: 'bg-gold-100 text-gold-600 dark:bg-gold-600/25 dark:text-gold-200',
   event: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
+  meeting: 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200',
 }
 
 export function CategoryBadge({ category }: { category: Category }) {

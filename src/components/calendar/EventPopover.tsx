@@ -6,6 +6,9 @@ import { rowsFor, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 import { downloadIcs, googleCalendarUrl, icsForEvent } from '../../lib/ics'
 import { formatServiceHours, isRecurring } from '../../lib/format'
+import { KIND_LABEL, absencesOn } from '../../lib/absence'
+import AbsenceList from '../AbsenceList'
+import { AUDIENCE_LABEL } from '../../lib/types'
 import { Icon, IconButton, type IconName } from './icons'
 
 const GAP = 8
@@ -116,6 +119,10 @@ export default function EventPopover({
   const status = statusOf(event, start, userId)
   const { going, mine, spotsLeft } = rowsFor(instance, userId)
   const series = isRecurring(event)
+  const meeting = event.category === 'meeting'
+  const notices = absencesOn(event, event.absences, start)
+  const myNotice = notices.find((a) => a.user_id === userId)
+  const absentHref = `/absent?event=${event.slug}${series ? `&date=${instance.key}` : ''}`
   const hours = formatServiceHours(event)
   const gcal = googleCalendarUrl(event, start)
 
@@ -226,6 +233,20 @@ export default function EventPopover({
             </Row>
           )}
 
+          {meeting ? (
+            <Row icon="people">
+              <p className="pt-0.5">
+                Meeting · invited: {AUDIENCE_LABEL[event.audience ?? 'everyone'].toLowerCase()}
+                {isAdmin && notices.length > 0 && (
+                  <span className="muted">
+                    {' · '}
+                    {notices.filter((n) => n.kind === 'absent').length} out,{' '}
+                    {notices.filter((n) => n.kind === 'late').length} late
+                  </span>
+                )}
+              </p>
+            </Row>
+          ) : (
           <Row icon="people">
             <p className="pt-0.5">
               {going} going{series ? ' this date' : ''}
@@ -237,6 +258,15 @@ export default function EventPopover({
               )}
             </p>
           </Row>
+          )}
+
+          {isAdmin && notices.length > 0 && (
+            <Row icon="people">
+              <div className="pt-0.5">
+                <AbsenceList post={event} rows={notices} compact />
+              </div>
+            </Row>
+          )}
 
           {hours && (
             <Row icon="clock">
@@ -258,7 +288,20 @@ export default function EventPopover({
         {/* RSVP */}
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] px-5 py-3 text-sm">
           {status === 'past' ? (
-            <span className="muted">This event has ended{mine ? ' · you went' : ''}</span>
+            <span className="muted">This {meeting ? 'meeting' : 'event'} has ended{mine ? ' · you went' : ''}</span>
+          ) : meeting ? (
+            <>
+              <span className="font-medium">Coming{series ? ' this date' : ''}?</span>
+              <div className="flex gap-2">
+                <RsvpButton on={status !== 'declined'} disabled={busy} onClick={() => status === 'declined' && onRsvp(instance)}>
+                  Yes
+                </RsvpButton>
+                <RsvpButton on={status === 'declined'} disabled={busy} onClick={() => status !== 'declined' && onRsvp(instance)}>
+                  Can’t make it
+                </RsvpButton>
+              </div>
+              {busy && <span className="text-xs muted">Saving…</span>}
+            </>
           ) : !canAnswer ? (
             <span className="muted">{status === 'full' ? 'This event is full' : 'Sign-ups are closed'}</span>
           ) : (
@@ -275,6 +318,22 @@ export default function EventPopover({
               {busy && <span className="text-xs muted">Saving…</span>}
             </>
           )}
+          {status !== 'past' &&
+            (meeting ? (
+              status !== 'declined' && (
+                <Link to={absentHref} className="text-xs muted underline">
+                  {myNotice?.kind === 'late' ? `You said: late${myNotice.arrives ? ` (${myNotice.arrives})` : ''}` : 'Running late?'}
+                </Link>
+              )
+            ) : myNotice ? (
+              <Link to={absentHref} className="text-xs muted underline">
+                You said: {KIND_LABEL[myNotice.kind].toLowerCase()}
+              </Link>
+            ) : (
+              <Link to={absentHref} className="text-xs muted underline">
+                Can’t make it?
+              </Link>
+            ))}
           {copied && <span className="ml-auto text-xs muted">Link copied</span>}
         </div>
       </div>

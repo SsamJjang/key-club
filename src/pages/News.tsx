@@ -24,6 +24,8 @@ export default function News() {
       .from('posts')
       .select('*, author:profiles!author_id(id, full_name, avatar_url, title)')
       .eq('published', true)
+      // Meetings are calendar-only; they never show up in the feed.
+      .neq('category', 'meeting')
       .order('pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
