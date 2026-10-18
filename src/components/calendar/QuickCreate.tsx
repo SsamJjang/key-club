@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { dayKey, fromDayKey, slugify } from '../../lib/format'
 import { BLANK_SCHEDULE, addDays, toPayload, type ScheduleForm } from '../../lib/schedule'
-import { EVENT_COLORS, type EventColorKey } from '../../lib/eventColors'
+import { EVENT_COLORS, colorOf, type EventColorKey } from '../../lib/eventColors'
+import type { Audience } from '../../lib/types'
 import { useFloating } from './EventPopover'
 import { Icon, IconButton, type IconName } from './icons'
 
@@ -18,6 +19,19 @@ export interface Draft {
   /** What was clicked; null opens the card centred. */
   anchor: DOMRect | null
 }
+
+/** What the card can make. Each is a post category with its own fields. */
+type Kind = 'event' | 'meeting'
+
+const KINDS: { key: Kind; label: string }[] = [
+  { key: 'event', label: 'Event' },
+  { key: 'meeting', label: 'Meeting' },
+]
+
+const AUDIENCES: { key: Audience; label: string }[] = [
+  { key: 'everyone', label: 'Everyone' },
+  { key: 'officers', label: 'Officers' },
+]
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const hhmm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -64,6 +78,8 @@ export default function QuickCreate({
   const ref = useRef<HTMLDivElement>(null)
   const { sheet, style } = useFloating(ref, draft.anchor, 448, onClose)
 
+  const [kind, setKind] = useState<Kind>('event')
+  const [audience, setAudience] = useState<Audience>('everyone')
   const [title, setTitle] = useState(draft.title)
   const [date, setDate] = useState(dayKey(draft.start))
   const [allDay, setAllDay] = useState(draft.allDay)
@@ -79,6 +95,10 @@ export default function QuickCreate({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Null colour means "the type's default" — peacock for events, grape for
+  // meetings — so switching type repaints an untouched card.
+  const shownColor = colorOf({ color, category: kind })
+
   const weekday = fromDayKey(date).toLocaleDateString(undefined, { weekday: 'long' })
 
   // Keep the placeholder on the grid in step with the form.
@@ -90,9 +110,9 @@ export default function QuickCreate({
       e.setHours(...(end.split(':').map(Number) as [number, number]))
       if (e <= s) e.setDate(e.getDate() + 1)
     }
-    onChange({ ...draft, start: s, end: e, allDay, title, color })
+    onChange({ ...draft, start: s, end: e, allDay, title, color: shownColor })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, allDay, start, end, title, color])
+  }, [date, allDay, start, end, title, shownColor])
 
   useEffect(() => {
     ref.current?.querySelector<HTMLInputElement>('input[name="title"]')?.focus({ preventScroll: true })
@@ -132,19 +152,21 @@ export default function QuickCreate({
       title: title.trim(),
       summary: summary.trim() || null,
       body: '',
-      category: 'event' as const,
+      category: kind,
       cover_url: null,
       pinned: false,
       published: true,
       author_id: userId,
       ...toPayload(schedule),
       location: location.trim() || null,
-      service_hours: hours ? Number(hours) : null,
+      // Meetings take no sign-ups and award no hours; they invite instead.
+      service_hours: kind === 'event' && hours ? Number(hours) : null,
       hours_tbd: false,
-      capacity: capacity ? Number(capacity) : null,
+      capacity: kind === 'event' && capacity ? Number(capacity) : null,
       signup_open: true,
       color,
       calendar_label: null,
+      audience: kind === 'meeting' ? audience : null,
     }
 
     // Slugs are unique; a second "Beach cleanup" gets a short suffix.
@@ -164,7 +186,8 @@ export default function QuickCreate({
   }
 
   function moreOptions() {
-    const params = new URLSearchParams({ date })
+    const params = new URLSearchParams({ date, type: kind })
+    if (kind === 'meeting') params.set('audience', audience)
     if (!allDay) {
       params.set('time', start)
       params.set('end', end)
@@ -173,8 +196,8 @@ export default function QuickCreate({
       ['title', title.trim()],
       ['location', location.trim()],
       ['summary', summary.trim()],
-      ['hours', hours],
-      ['capacity', capacity],
+      ['hours', kind === 'event' ? hours : ''],
+      ['capacity', kind === 'event' ? capacity : ''],
       ['color', color ?? ''],
     ]
     for (const [key, value] of extra) if (value) params.set(key, value)
@@ -190,7 +213,7 @@ export default function QuickCreate({
       <div
         ref={ref}
         role="dialog"
-        aria-label="Create event"
+        aria-label={kind === 'meeting' ? 'Create meeting' : 'Create event'}
         style={style}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
@@ -215,9 +238,24 @@ export default function QuickCreate({
               placeholder="Add title"
               className="w-full border-b border-[var(--line-strong)] bg-transparent pb-1.5 text-[1.375rem] outline-none placeholder:text-[var(--ink-faint)] focus:border-b-2 focus:border-navy-500"
             />
-            <span className="mt-3 inline-block rounded-md bg-navy-100 px-3 py-1.5 text-sm font-medium text-navy-800 dark:bg-navy-700 dark:text-navy-50">
-              Event
-            </span>
+            <div className="mt-3 flex gap-1.5" role="radiogroup" aria-label="Type">
+              {KINDS.map((k) => (
+                <button
+                  key={k.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === k.key}
+                  onClick={() => setKind(k.key)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    kind === k.key
+                      ? 'bg-navy-100 text-navy-800 dark:bg-navy-700 dark:text-navy-50'
+                      : 'muted hover:bg-[var(--surface-2)]'
+                  }`}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <Row icon="clock">
@@ -276,6 +314,26 @@ export default function QuickCreate({
           </Row>
 
           <Row icon="people">
+            {kind === 'meeting' ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-sm">
+                <span className="muted">Invite</span>
+                {AUDIENCES.map((a) => (
+                  <button
+                    key={a.key}
+                    type="button"
+                    aria-pressed={audience === a.key}
+                    onClick={() => setAudience(a.key)}
+                    className={`h-8 rounded-full border px-4 font-medium transition ${
+                      audience === a.key
+                        ? 'border-transparent bg-navy-100 text-navy-800 dark:bg-navy-700 dark:text-navy-50'
+                        : 'border-[var(--line-strong)] hover:bg-[var(--surface-2)]'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
             <div className="flex gap-2">
               <input
                 type="number"
@@ -295,6 +353,7 @@ export default function QuickCreate({
                 className={field}
               />
             </div>
+            )}
           </Row>
 
           <Row icon="notes">
@@ -310,7 +369,7 @@ export default function QuickCreate({
           <Row icon="today">
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Colour">
               {EVENT_COLORS.map((c) => {
-                const on = (color ?? 'peacock') === c.key
+                const on = shownColor === c.key
                 return (
                   <button
                     key={c.key}

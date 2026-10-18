@@ -59,6 +59,9 @@ export default function PostEditor() {
       service_hours: params.get('hours') ?? '',
       capacity: params.get('capacity') ?? '',
       color: isColorKey(color) ? color : null,
+      // Quick-create's type and invite carry over too.
+      category: params.get('type') === 'meeting' ? ('meeting' as Category) : BLANK.category,
+      audience: params.get('audience') === 'officers' ? ('officers' as Audience) : BLANK.audience,
     }
   })
   const [schedule, setSchedule] = useState<ScheduleForm>(() =>
