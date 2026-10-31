@@ -117,6 +117,9 @@ export default function Home() {
       .filter(Boolean)
       .join(' · ')
 
+  // A pinned weekly series shows its next date, not the day it began.
+  const pinnedAt = pinned?.starts_at ? (nextOccurrence(pinned) ?? new Date(pinned.starts_at)) : null
+
   const myNext = upcoming.filter((u) => u.mine)
   // Ways to serve: still open, not already yours, not full — and events that
   // give service hours before the rest (a meeting is not a way to serve).
@@ -161,6 +164,44 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ---------------- Pinned ---------------- */}
+      {pinned && (
+        <section>
+          <Link
+            to={`/post/${pinned.slug}`}
+            className="card card-pinned group block overflow-hidden transition hover:-translate-y-0.5"
+          >
+            <div className="card-pinned-strip" aria-hidden />
+            <div className="grid md:grid-cols-[1.25fr_1fr]">
+              <div className="order-2 flex flex-col p-7 sm:p-9 md:order-1">
+                <div className="flex items-center gap-2">
+                  <span className="tag tag-pinned">📌 Pinned</span>
+                  <CategoryBadge category={pinned.category} />
+                </div>
+                <h2 className="display mt-4 text-3xl sm:text-4xl">{pinned.title}</h2>
+                {pinned.summary && <p className="mt-3 muted">{pinned.summary}</p>}
+                {pinnedAt && (
+                  <p className="mt-4 text-sm font-medium text-navy-600 dark:text-navy-200">
+                    🗓️ {formatDateTime(pinnedAt.toISOString())}
+                  </p>
+                )}
+                <span className="mt-6 inline-block text-sm font-semibold text-navy-600 group-hover:underline md:mt-auto md:pt-6 dark:text-navy-200">
+                  Read more →
+                </span>
+              </div>
+              {pinned.cover_url && (
+                <CoverImage
+                  src={pinned.cover_url}
+                  ratio={4 / 3}
+                  eager
+                  className="order-1 aspect-[16/9] w-full md:order-2 md:aspect-auto md:h-full md:min-h-64"
+                />
+              )}
+            </div>
+          </Link>
+        </section>
+      )}
+
       {/* ---------------- Together ---------------- */}
       {club.hours > 0 && (
         <section className="mx-auto max-w-3xl text-center">
@@ -190,40 +231,6 @@ export default function Home() {
           </div>
         )}
       </section>
-
-      {/* ---------------- Pinned ---------------- */}
-      {pinned && (
-        <section>
-          <Link to={`/post/${pinned.slug}`} className="card group block overflow-hidden transition hover:-translate-y-0.5">
-            <div className="grid md:grid-cols-[1.25fr_1fr]">
-              <div className="order-2 flex flex-col p-7 sm:p-9 md:order-1">
-                <div className="flex items-center gap-2">
-                  <span className="tag bg-gold-100 text-gold-600 dark:bg-gold-500/20 dark:text-gold-200">📌 Pinned</span>
-                  <CategoryBadge category={pinned.category} />
-                </div>
-                <h2 className="display mt-4 text-3xl sm:text-4xl">{pinned.title}</h2>
-                {pinned.summary && <p className="mt-3 muted">{pinned.summary}</p>}
-                {pinned.starts_at && (
-                  <p className="mt-4 text-sm font-medium text-navy-600 dark:text-navy-200">
-                    🗓️ {formatDateTime(pinned.starts_at)}
-                  </p>
-                )}
-                <span className="mt-6 inline-block text-sm font-semibold text-navy-600 group-hover:underline md:mt-auto md:pt-6 dark:text-navy-200">
-                  Read more →
-                </span>
-              </div>
-              {pinned.cover_url && (
-                <CoverImage
-                  src={pinned.cover_url}
-                  ratio={4 / 3}
-                  eager
-                  className="order-1 aspect-[16/9] w-full md:order-2 md:aspect-auto md:h-full md:min-h-64"
-                />
-              )}
-            </div>
-          </Link>
-        </section>
-      )}
 
       {/* ---------------- News ---------------- */}
       <section>

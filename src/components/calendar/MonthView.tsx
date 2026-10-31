@@ -3,6 +3,7 @@ import type { Instance } from '../../lib/calendar'
 import { WEEKDAY_SHORT, dayKey, isToday, monthCells, shortTime, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 import type { Draft } from './QuickCreate'
+import { Icon } from './icons'
 
 /**
  * Google Calendar's month view: the grid fills the screen, rows share the
@@ -201,7 +202,7 @@ export function Chip({
         e.stopPropagation()
         onOpen(instance, e.currentTarget.getBoundingClientRect())
       }}
-      title={`${instance.allDay ? '' : `${shortTime(instance.start)} `}${instance.event.title}`}
+      title={`${instance.event.pinned ? '📌 ' : ''}${instance.allDay ? '' : `${shortTime(instance.start)} `}${instance.event.title}`}
       style={{ height: height - 2, marginBottom: 2 }}
       className={`flex w-full min-w-0 items-center gap-1.5 rounded text-left transition ${
         narrow ? 'px-0.5 text-[10px]' : 'px-1.5 text-xs'
@@ -218,6 +219,9 @@ export function Chip({
         />
       )}
       {!bar && <span className="shrink-0 tabular-nums muted">{shortTime(instance.start)}</span>}
+      {instance.event.pinned && (
+        <Icon name="pushpin" className={`cal-pin -mx-0.5 ${narrow ? 'size-2.5' : 'size-3.5'}`} />
+      )}
       <span
         className={`${narrow ? 'overflow-hidden whitespace-nowrap' : 'truncate'} ${bar ? '' : 'font-medium'}`}
       >

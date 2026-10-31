@@ -4,6 +4,7 @@ import type { CalendarEvent, Instance } from '../../lib/calendar'
 import { groupByDay, instanceTime, isToday, statusOf } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 import { fromDayKey } from '../../lib/format'
+import { Icon } from './icons'
 
 /**
  * Google Calendar's Schedule view — also what search results look like:
@@ -87,6 +88,9 @@ export default function AgendaView({
                             {instance.allDay ? 'All day' : instanceTime(instance)}
                           </span>
                           <span className="order-1 min-w-0 truncate font-medium sm:order-2 sm:flex-1">
+                            {instance.event.pinned && (
+                              <Icon name="pushpin" className="cal-pin mr-1 inline-block size-4 align-[-3px]" />
+                            )}
                             {instance.event.title}
                             {instance.event.location && (
                               <span className="hidden font-normal muted md:inline"> · {instance.event.location}</span>

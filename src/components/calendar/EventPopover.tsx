@@ -219,6 +219,7 @@ export default function EventPopover({
 
         <div className="px-5 pb-2">
           <Row icon="swatch">
+            {event.pinned && <span className="tag tag-pinned mb-1.5">📌 Pinned</span>}
             <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight">{event.title}</h2>
             <p className="mt-1 muted">
               {dateLine}

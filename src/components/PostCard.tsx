@@ -13,8 +13,13 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
   const photos = useMemo(() => (compact ? [] : bodyImages(post.body)), [post.body, compact])
 
   return (
-    <article className="card group overflow-hidden transition hover:-translate-y-0.5 hover:border-navy-300 dark:hover:border-navy-600">
+    <article
+      className={`card group overflow-hidden transition hover:-translate-y-0.5 ${
+        post.pinned ? 'card-pinned' : 'hover:border-navy-300 dark:hover:border-navy-600'
+      }`}
+    >
       <Link to={`/post/${post.slug}`} className="block">
+        {post.pinned && <div className="card-pinned-strip" aria-hidden />}
         {!compact && (post.cover_url || photos.length > 0) && (
           <div className="relative">
             {post.cover_url ? (
@@ -54,9 +59,7 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
           <div className="flex flex-wrap items-center gap-2">
             <CategoryBadge category={post.category} />
             {post.pinned && (
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gold-500 dark:text-gold-300">
-                📌 Pinned
-              </span>
+              <span className="tag tag-pinned">📌 Pinned</span>
             )}
             {!post.published && (
               <span className="rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide muted">

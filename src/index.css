@@ -151,6 +151,43 @@ html.dark {
     white-space: nowrap;
   }
 
+  /* Pinned posts wear crest gold: a gold edge, a warm glow and a filled tag,
+     so they read as "the board wants you to see this" at a glance. */
+  .card-pinned {
+    border-color: var(--color-gold-300);
+    box-shadow: 0 0 0 1px var(--color-gold-300), 0 10px 30px -12px rgb(201 143 18 / 0.45), var(--shadow);
+  }
+
+  html.dark .card-pinned {
+    border-color: var(--color-gold-400);
+    box-shadow: 0 0 0 1px var(--color-gold-400), 0 10px 34px -12px rgb(229 173 44 / 0.35), var(--shadow);
+  }
+
+  .card-pinned-strip {
+    height: 4px;
+    background: var(--gold);
+  }
+
+  .tag-pinned {
+    background: var(--gold);
+    color: var(--gold-ink);
+    box-shadow: 0 1px 2px rgb(162 112 12 / 0.25);
+  }
+
+  /* The calendar's pin: a small gold pushpin before a pinned event's title. */
+  .cal-pin {
+    color: var(--color-gold-500);
+  }
+
+  html.dark .cal-pin {
+    color: var(--color-gold-300);
+  }
+
+  .ec-block .cal-pin,
+  .ec-block-soft .cal-pin {
+    color: inherit;
+  }
+
   .icon-btn {
     display: inline-grid;
     place-items: center;

@@ -14,6 +14,7 @@ import {
 } from '../../lib/calendar'
 import { colorOf } from '../../lib/eventColors'
 import type { Draft } from './QuickCreate'
+import { Icon } from './icons'
 
 const DAY_PX = 24 * HOUR_PX
 const GUTTER = '4rem'
@@ -158,6 +159,7 @@ export default function TimeGrid({
                       status === 'past' ? 'ec-past' : ''
                     }`}
                   >
+                    {instance.event.pinned && <Icon name="pushpin" className="cal-pin mr-1 size-3.5" />}
                     <span className="truncate">{instance.event.title}</span>
                   </button>
                 )
@@ -270,11 +272,19 @@ export default function TimeGrid({
                     >
                       {short ? (
                         <span className="block truncate">
+                          {instance.event.pinned && (
+                            <Icon name="pushpin" className="cal-pin mr-0.5 inline-block size-3 align-[-2px]" />
+                          )}
                           <span className="font-medium">{instance.event.title}</span>, {shortTime(instance.start)}
                         </span>
                       ) : (
                         <>
-                          <span className="block truncate font-medium">{instance.event.title}</span>
+                          <span className="block truncate font-medium">
+                            {instance.event.pinned && (
+                              <Icon name="pushpin" className="cal-pin mr-0.5 inline-block size-3 align-[-2px]" />
+                            )}
+                            {instance.event.title}
+                          </span>
                           <span className="block truncate opacity-90">
                             {shortTime(instance.start)}
                             {end}
