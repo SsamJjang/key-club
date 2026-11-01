@@ -171,7 +171,6 @@ export default function Home() {
             to={`/post/${pinned.slug}`}
             className="card card-pinned group block overflow-hidden transition hover:-translate-y-0.5"
           >
-            <div className="card-pinned-strip" aria-hidden />
             <div className="grid md:grid-cols-[1.25fr_1fr]">
               <div className="order-2 flex flex-col p-7 sm:p-9 md:order-1">
                 <div className="flex items-center gap-2">

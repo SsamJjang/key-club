@@ -19,7 +19,6 @@ export default function PostCard({ post, compact = false }: { post: Post; compac
       }`}
     >
       <Link to={`/post/${post.slug}`} className="block">
-        {post.pinned && <div className="card-pinned-strip" aria-hidden />}
         {!compact && (post.cover_url || photos.length > 0) && (
           <div className="relative">
             {post.cover_url ? (

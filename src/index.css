@@ -151,21 +151,23 @@ html.dark {
     white-space: nowrap;
   }
 
-  /* Pinned posts wear crest gold: a gold edge, a warm glow and a filled tag,
-     so they read as "the board wants you to see this" at a glance. */
+  /* Pinned posts wear crest gold: a soft gold edge, a warm wash from the
+     corner and a filled tag, so they read as "the board wants you to see
+     this" without shouting. */
   .card-pinned {
-    border-color: var(--color-gold-300);
-    box-shadow: 0 0 0 1px var(--color-gold-300), 0 10px 30px -12px rgb(201 143 18 / 0.45), var(--shadow);
+    border-color: rgb(229 173 44 / 0.5);
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgb(242 200 96 / 0.16), transparent 55%),
+      var(--card);
+    box-shadow: 0 14px 34px -18px rgb(201 143 18 / 0.5), var(--shadow);
   }
 
   html.dark .card-pinned {
-    border-color: var(--color-gold-400);
-    box-shadow: 0 0 0 1px var(--color-gold-400), 0 10px 34px -12px rgb(229 173 44 / 0.35), var(--shadow);
-  }
-
-  .card-pinned-strip {
-    height: 4px;
-    background: var(--gold);
+    border-color: rgb(242 200 96 / 0.3);
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgb(242 200 96 / 0.1), transparent 55%),
+      var(--card);
+    box-shadow: 0 14px 34px -18px rgb(229 173 44 / 0.3), var(--shadow);
   }
 
   .tag-pinned {
