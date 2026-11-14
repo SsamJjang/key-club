@@ -93,6 +93,8 @@ export interface EventSignup {
   status: 'going' | 'waitlist'
   attended: boolean
   created_at: string
+  /** The officer who put them on, when it wasn't the member (011). */
+  added_by?: string | null
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'grade'> | null
 }
 

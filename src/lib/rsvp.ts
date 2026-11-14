@@ -44,6 +44,25 @@ export async function addSignup(postId: string, userId: string, occursOn: string
   })
 }
 
+/**
+ * An officer putting someone else on an event. Skips the closed / full /
+ * already-over rules the member's own button follows — RLS (011) only
+ * checks that the officer is an officer and the member is active.
+ */
+export async function officerAddSignup(
+  postId: string,
+  userId: string,
+  occursOn: string | null,
+  officerId: string,
+) {
+  return supabase.from('event_signups').insert({
+    post_id: postId,
+    user_id: userId,
+    occurs_on: occursOn,
+    added_by: officerId,
+  })
+}
+
 export async function removeSignup(postId: string, userId: string, occursOn: string | null) {
   const q = supabase.from('event_signups').delete().eq('post_id', postId).eq('user_id', userId)
   // .eq() against null matches nothing in PostgREST — null needs .is().

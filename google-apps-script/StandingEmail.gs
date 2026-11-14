@@ -16,14 +16,22 @@
  * WeeklyHoursEmail.gs. It reuses the SUPABASE_URL and SUPABASE_SERVICE_KEY
  * script properties, so there is nothing new to configure. Then:
  *   1. Run previewStandingRecipients() — logs who would get which email
- *   2. Run sendStandingTestToMe()      — both versions, to you only
- *   3. Run createStandingTrigger()     — Wednesdays at 6 PM Seoul time
+ *   2. With SEND_TO_MEMBERS = false, run sendStandingEmails() — test to your list
+ *   3. Set SEND_TO_MEMBERS = true, then run createStandingTrigger() — Wednesdays 6 PM
  *
  * Respects the weekly email on/off switch in Admin -> Settings.
  */
 
+// true  = every Behind/Danger member gets their own email.
+// false = TEST: one Behind + one Danger email (real member data) to each address below.
+var SEND_TO_MEMBERS = false;
+var TEST_RECIPIENTS = [
+  // 'you@example.com',
+];
+// CC'd on every member email when SEND_TO_MEMBERS is true.
+var CC_ON_MEMBER_EMAILS = ['27lee.daheun@gcssongdo.co.kr', 'choi.jenny@gcssongdo.co.kr'];
+
 var STANDING_TIERS = ['behind', 'danger'];
-var UPCOMING_LIMIT = 5;
 
 // ---------------------------------------------------------------------------
 // Entry points
@@ -37,28 +45,6 @@ function sendStandingEmails() {
 /** Lists who would get which email, in the execution log. Sends nothing. */
 function previewStandingRecipients() {
   stRun_({ dryRun: true });
-}
-
-/**
- * Sends you both versions, filled in with your own hours, whatever tier you
- * are actually in. Ignores the on/off switch.
- */
-function sendStandingTestToMe() {
-  var me = Session.getActiveUser().getEmail();
-  var settings = stSettings_();
-  var rows = stFetch_(
-    '/rest/v1/member_hours_standing?select=*&email=eq.' + encodeURIComponent(me)
-  );
-  if (rows.length === 0) throw new Error(me + ' is not an active member, so there is nothing to send.');
-
-  var logo = stLogo_(settings);
-  var upcoming = stUpcoming_();
-  STANDING_TIERS.forEach(function (tier) {
-    var row = Object.assign({}, rows[0], { tier: tier });
-    var mail = buildStandingEmail_(row, settings, logo, upcoming);
-    MailApp.sendEmail(me, '[TEST ' + tier + '] ' + mail.subject, mail.text, stMailOptions_(mail, settings));
-  });
-  Logger.log('Sent the behind and danger versions to %s.', me);
 }
 
 // ---------------------------------------------------------------------------
@@ -102,12 +88,11 @@ function stSettings_() {
   return settings;
 }
 
-/** The next few events with hours and room left, soonest first. */
+/** Every upcoming event with room left, soonest first. */
 function stUpcoming_() {
-  var rows = stFetch_('/rest/v1/upcoming_service_events?select=*&order=on_date,starts_time&limit=30');
+  var rows = stFetch_('/rest/v1/upcoming_service_events?select=*&order=on_date,starts_time');
   return rows
-    .filter(function (e) { return e.spots_left === null || Number(e.spots_left) > 0; })
-    .slice(0, UPCOMING_LIMIT);
+    .filter(function (e) { return e.spots_left === null || Number(e.spots_left) > 0; });
 }
 
 function stMailOptions_(mail, settings) {
@@ -123,6 +108,25 @@ function stMailOptions_(mail, settings) {
 
 function stRun_(opts) {
   var settings = stSettings_();
+
+  if (!SEND_TO_MEMBERS && !opts.dryRun) {
+    var to = TEST_RECIPIENTS.length ? TEST_RECIPIENTS : [Session.getActiveUser().getEmail()];
+    var all = stFetch_('/rest/v1/member_hours_standing?select=*&tier=in.(' + STANDING_TIERS.join(',') +
+      ')&order=tier,club_hours,full_name');
+    var ups = stUpcoming_();
+    var lg = stLogo_(settings);
+    STANDING_TIERS.forEach(function (tier) {
+      var sample = all.filter(function (r) { return r.tier === tier; })[0];
+      if (!sample) { Logger.log('No %s members right now — skipped that version.', tier); return; }
+      var mail = buildStandingEmail_(sample, settings, lg, ups);
+      to.forEach(function (addr) {
+        MailApp.sendEmail(addr, '[TEST ' + tier + ' → ' + sample.full_name + '] ' + mail.subject,
+          mail.text, stMailOptions_(mail, settings));
+      });
+    });
+    Logger.log('TEST sent to %s. No members were emailed.', to.join(', '));
+    return;
+  }
 
   if (!settings.weekly_email_enabled && !opts.dryRun) {
     Logger.log('Member emails are switched off in Admin -> Settings. Nothing sent.');
@@ -144,7 +148,7 @@ function stRun_(opts) {
     });
     Logger.log('Upcoming events in the email (%s):', upcoming.length);
     upcoming.forEach(function (e) {
-      Logger.log('  %s — %s (%s)', e.on_date, e.title, e.hours_tbd ? 'hrs TBA' : e.service_hours + ' hrs');
+      Logger.log('  %s — %s (%s)', e.on_date, e.title, e.hours_tbd ? 'hrs TBA' : e.service_hours ? e.service_hours + ' hrs' : 'no hours set');
     });
     return;
   }
@@ -155,30 +159,70 @@ function stRun_(opts) {
     return;
   }
 
-  var quota = MailApp.getRemainingDailyQuota();
-  if (quota < rows.length) {
-    throw new Error(
-      'Daily email quota is ' + quota + ' but ' + rows.length + ' members need mail. ' +
-        'Nothing sent — try again tomorrow.'
-    );
+  // Who already got this week's email — a re-run (e.g. the next day, after
+  // the quota ran out) only mails the rest.
+  var props = PropertiesService.getScriptProperties();
+  var weekKey = 'STANDING_SENT_' + stWeekKey_();
+  var already = JSON.parse(props.getProperty(weekKey) || '[]');
+  var todo = rows.filter(function (r) { return already.indexOf(String(r.email).toLowerCase()) === -1; });
+  if (todo.length === 0) {
+    Logger.log('Everyone (%s) already got this week’s email. Nothing sent.', rows.length);
+    return;
+  }
+
+  // Gmail counts every recipient, CCs included: each email costs 1 + CCs.
+  var cost = 1 + CC_ON_MEMBER_EMAILS.length;
+  var capacity = Math.floor(MailApp.getRemainingDailyQuota() / cost);
+  var batch = todo.slice(0, capacity);
+  if (batch.length === 0) {
+    throw new Error('Gmail daily limit is used up (' + todo.length + ' members still waiting). ' +
+      'Run sendStandingEmails again tomorrow — already-mailed members are skipped.');
   }
 
   var logo = stLogo_(settings);
   var sent = 0;
   var failures = [];
-  rows.forEach(function (row) {
+  for (var i = 0; i < batch.length; i++) {
+    var row = batch[i];
     try {
       var mail = buildStandingEmail_(row, settings, logo, upcoming);
-      MailApp.sendEmail(row.email, mail.subject, mail.text, stMailOptions_(mail, settings));
+      var options = stMailOptions_(mail, settings);
+      if (CC_ON_MEMBER_EMAILS.length) options.cc = CC_ON_MEMBER_EMAILS.join(',');
+      MailApp.sendEmail(row.email, mail.subject, mail.text, options);
       sent++;
+      already.push(String(row.email).toLowerCase());
+      props.setProperty(weekKey, JSON.stringify(already));
     } catch (err) {
       failures.push(row.email + ': ' + err.message);
+      if (/too many times|quota|limit/i.test(err.message)) break; // out of quota: stop, resume tomorrow
     }
-  });
+  }
 
-  Logger.log('Sent %s, failed %s', sent, failures.length);
+  var left = todo.length - sent;
+  Logger.log('Sent %s, failed %s, still waiting %s', sent, failures.length, left);
   failures.forEach(function (f) { Logger.log('  FAILED %s', f); });
+  if (left > 0) {
+    Logger.log('Not everyone got it (Gmail daily limit). Run sendStandingEmails again tomorrow — ' +
+      'the %s already mailed this week are skipped.', already.length);
+  }
   stLogRun_(sent, failures);
+}
+
+/** Monday of this week (Seoul), e.g. "2026-11-09" — one send per member per week. */
+function stWeekKey_() {
+  var now = new Date(Date.now() + 9 * 3600 * 1000); // Seoul
+  var day = (now.getUTCDay() + 6) % 7;              // Mon = 0
+  var monday = new Date(now.getTime() - day * 86400 * 1000);
+  return monday.toISOString().slice(0, 10);
+}
+
+/**
+ * Forget who got this week's email, so the next sendStandingEmails() mails
+ * everyone again. Only for re-sending on purpose.
+ */
+function resetStandingSentThisWeek() {
+  PropertiesService.getScriptProperties().deleteProperty('STANDING_SENT_' + stWeekKey_());
+  Logger.log('Cleared. The next run mails every Behind/Danger member again.');
 }
 
 function stLogRun_(sent, failures) {
@@ -343,7 +387,7 @@ function stUpcomingRows_(upcoming, siteUrl) {
   return upcoming.map(function (e) {
     var p = stParts_(e.on_date);
     var meta = [stWeekday_(e.on_date), stTime_(e.starts_time), e.location].filter(Boolean).join(' · ');
-    var hours = e.hours_tbd ? 'HRS TBA' : '+' + Number(e.service_hours) + ' HR' + (Number(e.service_hours) === 1 ? '' : 'S');
+    var hours = e.hours_tbd ? 'HRS TBA' : Number(e.service_hours) > 0 ? '+' + Number(e.service_hours) + ' HR' + (Number(e.service_hours) === 1 ? '' : 'S') : '';
     var spots = e.spots_left !== null && Number(e.spots_left) <= 5
       ? '<div style="font-size:12px;font-weight:800;color:' + ST_RED + ';margin-top:4px;">' +
         e.spots_left + ' spot' + (Number(e.spots_left) === 1 ? '' : 's') + ' left</div>'
@@ -371,8 +415,10 @@ function stUpcomingRows_(upcoming, siteUrl) {
       '</td>' +
       // Hours pill
       '<td valign="top" align="right" style="padding:16px 0 14px 12px;border-bottom:1px solid ' + ST_LINE + ';white-space:nowrap;">' +
-      '<span style="display:inline-block;background:' + ST_GOLD + ';color:' + ST_NAVY + ';font-size:12px;' +
-      'letter-spacing:1px;font-weight:900;padding:7px 10px;">' + hours + '</span>' +
+      (hours
+        ? '<span style="display:inline-block;background:' + ST_GOLD + ';color:' + ST_NAVY + ';font-size:12px;' +
+          'letter-spacing:1px;font-weight:900;padding:7px 10px;">' + hours + '</span>'
+        : '') +
       '</td></tr>';
   }).join('');
 }
@@ -522,7 +568,7 @@ function buildStandingEmail_(row, settings, logo, upcoming) {
     (upcoming.length
       ? upcoming.map(function (e) {
           return '- ' + stWeekday_(e.on_date) + ' ' + stShortDate_(e.on_date) + ': ' + e.title + ' (' +
-            (e.hours_tbd ? 'hrs TBA' : '+' + Number(e.service_hours) + ' hrs') + ')' +
+            (e.hours_tbd ? 'hrs TBA' : Number(e.service_hours) > 0 ? '+' + Number(e.service_hours) + ' hrs' : 'see event') + ')' +
             (settings.site_url ? ' ' + settings.site_url.replace(/\/$/, '') + '/post/' + e.slug : '');
         }).join('\n')
       : 'New events are on the way — check the club site soon.') +

@@ -23,9 +23,11 @@ import {
   addSignup,
   datesFor,
   distinctMembers,
+  officerAddSignup,
   removeAllSignups,
   removeSignup,
 } from '../lib/rsvp'
+import AddMemberPicker from '../components/AddMemberPicker'
 import { renderBody } from '../lib/markdown'
 import CoverImage from '../components/CoverImage'
 import RichBody from '../components/media/RichBody'
@@ -103,6 +105,29 @@ export default function PostDetail() {
       ? await removeSignup(post.id, profile.id, key)
       : await addSignup(post.id, profile.id, key)
 
+    if (error) setError(error.message)
+    await loadSignups(post.id)
+    setBusy(false)
+  }
+
+  /** Officers: put someone on the date on screen, whatever its state. */
+  async function officerAdd(userId: string, key: string | null) {
+    if (!post || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error } = await officerAddSignup(post.id, userId, key, profile.id)
+    if (error) setError(error.message)
+    await loadSignups(post.id)
+    setBusy(false)
+  }
+
+  /** Officers: take someone off the date on screen. */
+  async function officerRemove(userId: string, name: string, key: string | null) {
+    if (!post) return
+    if (!window.confirm(`Remove ${name} from this ${isRecurring(post) ? 'date' : 'event'}?`)) return
+    setBusy(true)
+    setError(null)
+    const { error } = await removeSignup(post.id, userId, key)
     if (error) setError(error.message)
     await loadSignups(post.id)
     setBusy(false)
@@ -581,10 +606,14 @@ export default function PostDetail() {
               ) : (
                 <ul className="mt-3 flex flex-wrap gap-2">
                   {dateRows.map((s) => (
-                    <li key={s.id}>
+                    <li
+                      key={s.id}
+                      className="flex items-center rounded-full border border-[var(--line)] bg-[var(--card)] text-sm transition hover:border-navy-300"
+                    >
                       <Link
                         to={`/members/${s.user_id}`}
-                        className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] py-1 pl-1 pr-3 text-sm transition hover:border-navy-300"
+                        className={`flex items-center gap-2 py-1 pl-1 ${isAdmin ? 'pr-1.5' : 'pr-3'}`}
+                        title={s.added_by ? 'Added by an officer' : undefined}
                       >
                         <Avatar
                           name={s.profile?.full_name ?? '?'}
@@ -597,10 +626,34 @@ export default function PostDetail() {
                             you
                           </span>
                         )}
+                        {isAdmin && s.added_by && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide muted">added</span>
+                        )}
                       </Link>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void officerRemove(s.user_id, s.profile?.full_name ?? 'this member', shownKey)}
+                          aria-label={`Remove ${s.profile?.full_name ?? 'member'}`}
+                          className="mr-1 grid size-6 place-items-center rounded-full muted transition hover:bg-red-500/10 hover:text-red-600"
+                        >
+                          ×
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {/* Officers can add anyone, even past capacity, after sign-ups
+                  close, or once the date is over (for walk-ins). */}
+              {isAdmin && (
+                <AddMemberPicker
+                  exclude={new Set(dateRows.map((s) => s.user_id))}
+                  disabled={busy}
+                  onPick={(id) => void officerAdd(id, shownKey)}
+                />
               )}
             </div>
             </>

@@ -141,8 +141,8 @@ revoke all on public.member_hours_standing from anon, authenticated;
 -- ---------------------------------------------------------------------
 -- 4. Upcoming service opportunities, today through the due date.
 --    A series (event_dates) gives one row per remaining date; a single
---    event gives one row from starts_at. Only events that offer hours
---    (a number, or TBD) and are still open for sign-up.
+--    event gives one row from starts_at. Every published event counts;
+--    the email shows hours when the event has them.
 -- ---------------------------------------------------------------------
 drop view if exists public.upcoming_service_events;
 create view public.upcoming_service_events
@@ -165,8 +165,6 @@ occ as (
     ) d
    where p.category = 'event'
      and p.published
-     and p.signup_open
-     and (p.service_hours > 0 or p.hours_tbd)
 )
 select o.post_id, o.slug, o.title, o.location, o.service_hours, o.hours_tbd,
        o.on_date, case when o.all_day then null else o.starts_time end as starts_time,
