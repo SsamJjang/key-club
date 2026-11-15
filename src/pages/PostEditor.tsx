@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ColorPicker from '../components/ColorPicker'
 import EventSchedule from '../components/EventSchedule'
+import HoursInput from '../components/HoursInput'
 import CoverField from '../components/CoverField'
 import RichTextEditor from '../components/RichTextEditor'
 import { COVER_EVENT } from '../components/media/editorNodes'
@@ -395,16 +396,12 @@ export default function PostEditor() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="label" htmlFor="sh">Service hours</label>
-                    <input
+                    <HoursInput
                       id="sh"
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      className="field"
                       value={form.hours_tbd ? '' : form.service_hours}
                       disabled={form.hours_tbd}
                       placeholder={form.hours_tbd ? 'TBD' : 'None'}
-                      onChange={(e) => setForm({ ...form, service_hours: e.target.value })}
+                      onChange={(service_hours) => setForm({ ...form, service_hours })}
                     />
                   </div>
                   <div>

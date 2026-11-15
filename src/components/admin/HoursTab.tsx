@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { HoursEntry, Post, Profile } from '../../lib/types'
-import { dayKey, formatDate, isRecurring, occurrences } from '../../lib/format'
+import { dayKey, formatDate, formatHours, isRecurring, occurrences } from '../../lib/format'
 import type { SignupRow } from '../../lib/rsvp'
 import { Avatar, EmptyState, Notice, Spinner } from '../ui'
+import HoursInput from '../HoursInput'
 
 /**
  * Officers enter hours on members' behalf — members cannot submit their own.
@@ -114,13 +115,18 @@ export default function HoursTab() {
       setMsg({ tone: 'error', text: 'Pick at least one member.' })
       return
     }
+    const hours = Number(form.hours)
+    if (!(hours > 0) || hours > 24) {
+      setMsg({ tone: 'error', text: 'Hours each must be more than 0 and at most 24 hrs.' })
+      return
+    }
     setSaving(true)
     setMsg(null)
 
     const rows = [...selected].map((userId) => ({
       user_id: userId,
       post_id: form.post_id || null,
-      hours: Number(form.hours),
+      hours,
       description: form.description.trim(),
       served_on: form.served_on,
       status: 'approved',
@@ -135,7 +141,7 @@ export default function HoursTab() {
     else {
       setMsg({
         tone: 'success',
-        text: `Logged ${form.hours} hrs for ${rows.length} member${rows.length === 1 ? '' : 's'}.`,
+        text: `Logged ${formatHours(hours)} for ${rows.length} member${rows.length === 1 ? '' : 's'}.`,
       })
       setSelected(new Set())
       setForm({ hours: '', description: '', served_on: form.served_on, post_id: '' })
@@ -145,7 +151,7 @@ export default function HoursTab() {
   }
 
   async function remove(entry: HoursEntry) {
-    if (!window.confirm(`Delete ${entry.hours} hrs for ${entry.profile?.full_name}?`)) return
+    if (!window.confirm(`Delete ${formatHours(entry.hours)} for ${entry.profile?.full_name}?`)) return
     await supabase.from('hours_log').delete().eq('id', entry.id)
     await load()
   }
@@ -203,16 +209,12 @@ export default function HoursTab() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Hours each</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0.5"
-              max="24"
+            <label className="label">Time each</label>
+            <HoursInput
               required
-              className="field"
+              maxHours={24}
               value={form.hours}
-              onChange={(e) => setForm({ ...form, hours: e.target.value })}
+              onChange={(hours) => setForm({ ...form, hours })}
             />
           </div>
           <div>
@@ -319,7 +321,7 @@ export default function HoursTab() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{h.profile?.full_name}</p>
                   <p className="truncate text-xs muted">
-                    {Number(h.hours).toFixed(1)} hrs · {formatDate(h.served_on)} · {h.description}
+                    {formatHours(h.hours)} ·{formatDate(h.served_on)} · {h.description}
                   </p>
                 </div>
                 <button

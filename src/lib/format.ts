@@ -168,10 +168,24 @@ export function formatOccurrence(date: Date | null, allDay?: boolean | null) {
   return `${day} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
 }
 
+/** Decimal hours → whole hours and minutes, rounded to the minute. */
+export function splitHours(value: number) {
+  const total = Math.round(Number(value) * 60)
+  return { hours: Math.floor(total / 60), minutes: total % 60 }
+}
+
+/** 3 → "3 hrs", 2.6667 → "2 hrs 40 min", 0.6667 → "40 min". */
+export function formatHours(value: number | string | null | undefined) {
+  const { hours, minutes } = splitHours(Number(value ?? 0))
+  const h = `${hours} ${hours === 1 ? 'hr' : 'hrs'}`
+  if (!minutes) return h
+  return hours ? `${h} ${minutes} min` : `${minutes} min`
+}
+
 /** "3 hrs", "TBD", or "" when the event awards no hours at all. */
 export function formatServiceHours(post: { service_hours: number | null; hours_tbd?: boolean | null }) {
   if (post.hours_tbd) return 'TBD'
-  return post.service_hours ? `${post.service_hours} hrs` : ''
+  return post.service_hours ? formatHours(post.service_hours) : ''
 }
 
 export function initials(name: string) {

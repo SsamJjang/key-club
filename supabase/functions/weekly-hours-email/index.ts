@@ -40,9 +40,10 @@ function escapeHtml(value: string) {
 
 function buildEmail(row: DigestRow, settings: Settings) {
   const goal = Number(settings.hours_goal)
-  const hours = Number(row.approved_hours)
+  // Minute-level hours sum to things like 12.6667 — one decimal reads better.
+  const hours = Math.round(Number(row.approved_hours) * 10) / 10
   const pct = goal > 0 ? Math.min(100, Math.round((hours / goal) * 100)) : 0
-  const remaining = Math.max(0, goal - hours)
+  const remaining = Math.max(0, Math.round((goal - hours) * 10) / 10)
   const firstName = escapeHtml(row.full_name.split(/\s+/)[0] ?? row.full_name)
   const done = remaining === 0
 

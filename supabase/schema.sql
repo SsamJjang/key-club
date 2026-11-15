@@ -171,7 +171,7 @@ create table if not exists public.posts (
   starts_at     timestamptz,
   ends_at       timestamptz,
   location      text,
-  service_hours numeric(4,1) check (service_hours >= 0),
+  service_hours numeric(6,4) check (service_hours >= 0),
   capacity      integer check (capacity > 0),
   signup_open   boolean not null default true,
   created_at    timestamptz not null default now(),
@@ -207,7 +207,7 @@ create table if not exists public.hours_log (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references public.profiles(id) on delete cascade,
   post_id     uuid references public.posts(id) on delete set null,
-  hours       numeric(4,1) not null check (hours > 0 and hours <= 24),
+  hours       numeric(6,4) not null check (hours > 0 and hours <= 24),
   description text not null,
   served_on   date not null,
   status      text not null default 'pending'

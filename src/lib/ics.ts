@@ -1,4 +1,4 @@
-import { dayKey } from './format'
+import { dayKey, formatHours } from './format'
 import type { CalendarEvent, Instance } from './calendar'
 import { instancesOf } from './calendar'
 
@@ -87,7 +87,7 @@ function vevent(instance: Instance, siteUrl: string) {
 
   const details = [
     event.summary ?? plainText(event.body),
-    event.service_hours ? `Service hours: ${event.service_hours}` : '',
+    event.service_hours ? `Service hours: ${formatHours(event.service_hours)}` : '',
     event.hours_tbd ? 'Service hours: TBD' : '',
     siteUrl ? `${siteUrl.replace(/\/+$/, '')}/post/${event.slug}` : '',
   ]

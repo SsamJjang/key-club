@@ -7,6 +7,7 @@ import { BLANK_SCHEDULE, addDays, applyPreset, defaultUntil, repeatPresets, toPa
 import { EVENT_COLORS, colorOf, type EventColorKey } from '../../lib/eventColors'
 import type { Audience } from '../../lib/types'
 import { useFloating } from './EventPopover'
+import HoursInput from '../HoursInput'
 import { Icon, IconButton, type IconName } from './icons'
 
 /** The placeholder the grid draws while the quick-create card is open. */
@@ -363,15 +364,9 @@ export default function QuickCreate({
               </div>
             ) : (
             <div className="flex gap-2">
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                placeholder="Service hours"
-                className={field}
-              />
+              <div className="flex-[2]">
+                <HoursInput value={hours} onChange={setHours} placeholder="Hrs" className={field} />
+              </div>
               <input
                 type="number"
                 min="1"

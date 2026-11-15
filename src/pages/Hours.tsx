@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { ClubSettings, FundraiserEntry, HoursEntry, MemberFundraisers } from '../lib/types'
-import { formatDate } from '../lib/format'
+import { formatDate, formatHours } from '../lib/format'
 import { EmptyState, Notice, PageHeader, Spinner, Stat } from '../components/ui'
 
 /**
@@ -184,7 +184,7 @@ export default function Hours() {
             <li key={e.id} className="card p-5">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-[family-name:var(--font-display)] text-xl font-semibold">
-                  {Number(e.hours).toFixed(1)} hrs
+                  {formatHours(e.hours)}
                 </span>
                 {e.status !== 'approved' && (
                   <span className="rounded-full bg-gold-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gold-600 dark:bg-gold-600/25 dark:text-gold-200">
