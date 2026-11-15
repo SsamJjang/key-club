@@ -165,7 +165,7 @@ function erRecoverStuck_() {
     payload: JSON.stringify({
       status: 'failed',
       sent_at: new Date().toISOString(),
-      detail: 'Stopped partway (timed out). Some people may have been emailed — check before reminding again.',
+      detail: 'Stopped partway (timed out). Some people may have been emailed already, so check before reminding again.',
     }),
   });
 }
@@ -275,10 +275,10 @@ function erSend_(req, settings, logo) {
 
   var notes = [];
   if (testing) {
-    notes.push('TEST MODE — ' + sent + ' sample email(s) went to ' + testTo.join(', ') +
+    notes.push('TEST MODE: ' + sent + ' sample email(s) went to ' + testTo.join(', ') +
       ', not to the ' + people.length + ' member(s). Set ER_SEND_TO_MEMBERS = true in EventReminders.gs.');
   }
-  if (skipped) notes.push(skipped + ' not sent — Gmail daily limit reached.');
+  if (skipped) notes.push(skipped + ' not sent because the Gmail daily limit ran out.');
   if (failures.length) notes.push(failures.length + ' failed: ' + failures.slice(0, 10).join(' | '));
   Logger.log('"%s": sent %s, failed %s, skipped %s', post.title, sent, failures.length, skipped);
 
@@ -371,15 +371,39 @@ function erWhen_(post, req) {
   if (post.starts_at && !post.all_day) {
     start = Utilities.formatDate(new Date(post.starts_at), ER_TZ, 'h:mm a');
     range = start;
-    if (post.ends_at) range += ' – ' + Utilities.formatDate(new Date(post.ends_at), ER_TZ, 'h:mm a');
+    if (post.ends_at) {
+      var end = Utilities.formatDate(new Date(post.ends_at), ER_TZ, 'h:mm a');
+      // "5:15 to 6:15 PM" when both are PM, "11:00 AM to 1:00 PM" when not.
+      range = start.slice(-2) === end.slice(-2)
+        ? start.slice(0, -3) + ' to ' + end
+        : start + ' to ' + end;
+    }
   }
   return {
-    long: dayIso ? erLongDate_(dayIso) : 'a date to be announced',
+    long: dayIso ? erLongDate_(dayIso) : 'a date we’ll announce soon',
     short: dayIso ? erShortDate_(dayIso) : 'Date TBA',
+    soon: erSoon_(dayIso),
     start: start,
     timeTile: post.all_day ? 'All day' : range || 'TBA',
     hours: post.hours_tbd ? 'TBA' : Number(post.service_hours) > 0 ? erHours_(post.service_hours) : null,
   };
+}
+
+/**
+ * How a person would say when it is: "today", "tomorrow", "Friday" (this
+ * week), or "on November 20" (further out).
+ */
+function erSoon_(dayIso) {
+  if (!dayIso) return 'soon';
+  var today = Utilities.formatDate(new Date(), ER_TZ, 'yyyy-MM-dd');
+  var a = erDay_(today), b = erDay_(dayIso);
+  var ta = Date.UTC(Number(today.slice(0, 4)), a.m, a.d);
+  var tb = Date.UTC(Number(dayIso.slice(0, 4)), b.m, b.d);
+  var days = Math.round((tb - ta) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days > 1 && days < 7) return ER_DAYS[b.weekday];
+  return 'on ' + ER_MONTHS[b.m] + ' ' + b.d;
 }
 
 function erCircleLogo_(logo, size) {
@@ -410,27 +434,36 @@ function buildReminderEmail_(person, post, req, settings, logo) {
   var when = erWhen_(post, req);
   var signedUp = person.signedUp;
   var link = settings.site_url ? settings.site_url.replace(/\/$/, '') + '/post/' + post.slug : null;
+  var dateKey = req.occurs_on ||
+    (post.starts_at ? Utilities.formatDate(new Date(post.starts_at), ER_TZ, 'yyyy-MM-dd') : '');
+  var cantGoLink = link ? link + '?cantgo=1' + (dateKey ? '&date=' + dateKey : '') : null;
   var title = erEsc_(post.title);
 
   var whenText = '<b>' + erEsc_(when.long) + '</b>' + (when.start ? ' at <b>' + erEsc_(when.start) + '</b>' : '');
-  var where = post.location ? ', at <b>' + erEsc_(post.location) + '</b>' : '';
-
+  var where = post.location ? ' We’re meeting at <b>' + erEsc_(post.location) + '</b>.' : '';
+  var hoursLine = when.hours && when.hours !== 'TBA'
+    ? ' It counts for <b>' + erEsc_(when.hours) + '</b> of service.'
+    : '';
+  // "See you Friday!" reads like a person; "See you on November 20!" still works.
   var copy = signedUp
     ? {
-        subject: 'Reminder: ' + post.title + ' — ' + when.short,
-        headline: 'See you at ' + title + '!',
-        intro: 'Just a reminder — you’re signed up for <b>' + title + '</b> on ' + whenText + where + '.',
-        button: 'VIEW EVENT',
-        after: 'Can’t make it anymore? Open the event and tap <b>Cancel my spot</b> so someone else can take it.',
+        subject: 'See you ' + when.soon + ' at ' + post.title,
+        headline: 'See you ' + erEsc_(when.soon) + '!',
+        intro: 'Just a heads up that you signed up for <b>' + title + '</b>. It’s ' + whenText + '.' +
+          where + ' Thanks so much for helping out, we really appreciate it.',
+        buttons: [
+          { label: 'VIEW EVENT', href: link, primary: true },
+          { label: 'I CAN’T GO', href: cantGoLink, primary: false },
+        ],
+        after: 'If something came up, no worries. Tap <b>I can’t go</b> and your spot opens up for someone else.',
       }
     : {
-        subject: post.title + ' is coming up — ' + when.short,
-        headline: title + ' is coming up',
-        intro: '<b>' + title + '</b> is on ' + whenText + where + '.' +
-          (when.hours && when.hours !== 'TBA' ? ' It counts for <b>' + erEsc_(when.hours) + '</b> of service.' : '') +
-          ' There’s still time to sign up.',
-        button: 'SIGN UP',
-        after: '',
+        subject: post.title + ' is ' + when.soon + '. Can you make it?',
+        headline: when.soon === 'soon' ? 'Can you make it?' : 'Can you make it ' + erEsc_(when.soon) + '?',
+        intro: 'We’re doing <b>' + title + '</b> on ' + whenText +
+          ' and we’d love to have you there.' + where + hoursLine,
+        buttons: [{ label: 'SIGN UP', href: link, primary: true }],
+        after: 'Spots can fill up, so grab one soon if you’re free.',
       };
 
   var note = req.note
@@ -445,10 +478,18 @@ function buildReminderEmail_(person, post, req, settings, logo) {
     ? '<tr><td style="padding:0 46px;">' + erPara_(erEsc_(post.summary)) + '</td></tr>'
     : '';
 
-  var button = link
-    ? '<tr><td style="padding:30px 46px 0;"><a href="' + erEsc_(link) + '" ' +
-      'style="display:inline-block;background:' + ER_NAVY + ';color:#ffffff;text-decoration:none;' +
-      'padding:14px 26px;font-size:13px;letter-spacing:2px;font-weight:900;">' + copy.button + ' →</a></td></tr>'
+  // Side by side: navy for the main action, outlined for "I can't go".
+  var buttonCells = copy.buttons.filter(function (b) { return b.href; }).map(function (b, i) {
+    var style = b.primary
+      ? 'background:' + ER_NAVY + ';color:#ffffff;border:2px solid ' + ER_NAVY + ';'
+      : 'background:#ffffff;color:' + ER_NAVY + ';border:2px solid ' + ER_NAVY + ';';
+    return '<td style="padding:' + (i ? '0 0 0 10px' : '0') + ';">' +
+      '<a href="' + erEsc_(b.href) + '" style="display:inline-block;' + style + 'text-decoration:none;' +
+      'padding:12px 24px;font-size:13px;letter-spacing:2px;font-weight:900;">' + b.label + '</a></td>';
+  }).join('');
+  var button = buttonCells
+    ? '<tr><td style="padding:30px 46px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
+      buttonCells + '</tr></table></td></tr>'
     : '';
 
   var after = copy.after
@@ -472,7 +513,7 @@ function buildReminderEmail_(person, post, req, settings, logo) {
     '<div style="font-size:11px;letter-spacing:3.5px;font-weight:800;color:' + ER_GOLD +
     ';text-transform:uppercase;margin-bottom:10px;">GCS KEY CLUB · ' + erEsc_(when.short).toUpperCase() + '</div>' +
     '<div style="font-size:38px;line-height:1.02;font-weight:900;color:#ffffff;letter-spacing:-1px;">EVENT<br>REMINDER</div>' +
-    '<div style="font-size:14px;line-height:1.5;color:#d8e5ef;margin-top:14px;">Caring — Our Way of Life</div>' +
+    '<div style="font-size:14px;line-height:1.5;color:#d8e5ef;margin-top:14px;">Caring: Our Way of Life</div>' +
     '</td></tr></table></td></tr>' +
 
     '<tr><td style="background:' + ER_GOLD + ';padding:12px 42px;">' +
@@ -484,7 +525,7 @@ function buildReminderEmail_(person, post, req, settings, logo) {
 
     // Greeting, headline, intro
     '<tr><td style="padding:42px 46px 8px;">' +
-    '<div style="font-size:14px;letter-spacing:2px;font-weight:800;color:' + ER_MUTED + ';text-transform:uppercase;">Dear ' +
+    '<div style="font-size:14px;letter-spacing:2px;font-weight:800;color:' + ER_MUTED + ';text-transform:uppercase;">Hi ' +
     erEsc_(firstName) + ',</div>' +
     '<div style="font-size:34px;line-height:1.12;font-weight:900;color:' + ER_NAVY + ';margin-top:8px;">' + copy.headline + '</div>' +
     '<div style="height:4px;width:58px;background:' + ER_GOLD + ';margin-top:18px;"></div>' +
@@ -496,7 +537,7 @@ function buildReminderEmail_(person, post, req, settings, logo) {
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
     erTile_('DATE', when.short, ER_NAVY, false) +
     erTile_('TIME', when.timeTile, ER_NAVY_2, false) +
-    erTile_('SERVICE HOURS', when.hours || '—', ER_NAVY, true) +
+    erTile_('SERVICE HOURS', when.hours || 'None', ER_NAVY, true) +
     '</tr></table></td></tr>' +
 
     (post.location
@@ -524,7 +565,7 @@ function buildReminderEmail_(person, post, req, settings, logo) {
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/’/g, "'");
   };
   var text =
-    'Dear ' + firstName + ',\n\n' +
+    'Hi ' + firstName + ',\n\n' +
     plain(copy.headline) + '\n\n' +
     plain(copy.intro) + '\n\n' +
     'Date: ' + when.long + '\n' +
@@ -534,6 +575,7 @@ function buildReminderEmail_(person, post, req, settings, logo) {
     (req.note ? '\nA note from the officers:\n' + req.note + '\n' : '') +
     (post.summary ? '\n' + post.summary + '\n' : '') +
     (link ? '\n' + (signedUp ? 'View the event: ' : 'Sign up: ') + link + '\n' : '') +
+    (signedUp && cantGoLink ? 'Can’t go? ' + cantGoLink + '\n' : '') +
     (copy.after ? '\n' + plain(copy.after) + '\n' : '') +
     '\nGaonnuri Christian School • Key Club International\n';
 

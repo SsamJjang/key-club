@@ -21,7 +21,7 @@ export default function ProtectedRoute({
 
   if (loading) return <Spinner label="Checking your membership" />
 
-  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
 
   if (!profile) {
     return (

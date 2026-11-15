@@ -153,7 +153,7 @@ export function RemindPanel({
           className="field resize-y"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Bring gloves and a water bottle — we meet at the front gate."
+          placeholder="Bring gloves and a water bottle. We meet at the front gate."
         />
       </div>
 
@@ -193,7 +193,7 @@ export function ReminderStatus({
     case 'queued':
       return (
         <p className="text-xs text-navy-600 dark:text-navy-200">
-          ✉️ Reminder{when} queued — goes out within a minute.{' '}
+          ✉️ Reminder{when} queued. It goes out within a minute.{' '}
           <button type="button" className="font-semibold hover:underline" onClick={onCancel}>
             Cancel
           </button>

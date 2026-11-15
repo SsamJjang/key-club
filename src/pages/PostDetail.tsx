@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { EventAbsence, EventSignup, Post } from '../lib/types'
@@ -12,6 +12,7 @@ import {
   formatOccurrence,
   formatServiceHours,
   formatTime,
+  fromDayKey,
   hasEnded,
   isRecurring,
   nextOccurrence,
@@ -48,6 +49,21 @@ export default function PostDetail() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // "I can't go" in a reminder email lands here as ?cantgo=1&date=YYYY-MM-DD.
+  const [params, setParams] = useSearchParams()
+  const cantGo = params.get('cantgo') === '1'
+  const cantGoDate = params.get('date')
+  const [cancelledFromEmail, setCancelledFromEmail] = useState(false)
+  useEffect(() => {
+    if (cantGo && cantGoDate) setPickedDate(cantGoDate)
+  }, [cantGo, cantGoDate])
+  function dismissCantGo() {
+    const next = new URLSearchParams(params)
+    next.delete('cantgo')
+    next.delete('date')
+    setParams(next, { replace: true })
+  }
 
   const loadSignups = useCallback(async (postId: string) => {
     const { data } = await supabase
@@ -228,11 +244,60 @@ export default function PostDetail() {
               : 'Event is full'
             : "I'm going"
 
+  // The "I can't go" card. A series cancels just the emailed date.
+  const cantGoKey = series ? cantGoDate : null
+  const cantGoMine = signups.some((s) => s.user_id === profile?.id && s.occurs_on === cantGoKey)
+  const cantGoWhen = formatOccurrence(
+    cantGoKey ? fromDayKey(cantGoKey) : when,
+    post.all_day,
+  )
+  async function cancelFromEmail() {
+    await toggleRsvp(cantGoKey)
+    setCancelledFromEmail(true)
+  }
+
   return (
     <article className="rise mx-auto max-w-3xl">
       <Link to={meeting ? '/events' : '/news'} className="text-sm font-semibold muted hover:underline">
         ← Back to the {meeting ? 'calendar' : 'feed'}
       </Link>
+
+      {cantGo && post.category === 'event' && (
+        <div className="card mt-6 border-l-4 border-l-gold-400 p-5">
+          {cantGoMine ? (
+            <>
+              <p className="font-semibold">Can’t make it{cantGoWhen ? ` on ${cantGoWhen}` : ''}?</p>
+              <p className="mt-1 text-sm muted">
+                No worries, it happens. Cancel your spot and it opens up for someone else.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-primary py-1.5 text-sm"
+                  disabled={busy}
+                  onClick={() => void cancelFromEmail()}
+                >
+                  {busy ? 'Cancelling…' : 'Cancel my spot'}
+                </button>
+                <button type="button" className="btn btn-ghost py-1.5 text-sm" onClick={dismissCantGo}>
+                  Actually, I can go
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="flex-1 text-sm">
+                {cancelledFromEmail
+                  ? 'Done, your spot is cancelled. Thanks for letting us know!'
+                  : 'You’re not signed up for this one anymore, so you’re all set.'}
+              </p>
+              <button type="button" className="btn btn-ghost py-1 text-xs" onClick={dismissCantGo}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <header className="mt-6">
         <div className="flex flex-wrap items-center gap-2">
