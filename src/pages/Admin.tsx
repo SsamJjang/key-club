@@ -2,12 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { ClubSettings, Post } from '../lib/types'
-import { formatDate } from '../lib/format'
+import { formatDate, occurrences } from '../lib/format'
 import { CategoryBadge, EmptyState, Notice, PageHeader, Spinner, Stat } from '../components/ui'
 import MembersTab from '../components/admin/MembersTab'
 import HoursTab from '../components/admin/HoursTab'
 import FundraisersTab from '../components/admin/FundraisersTab'
 import AbsencesTab from '../components/admin/AbsencesTab'
+import {
+  RemindPanel,
+  ReminderStatus,
+  upcomingDates,
+  type EventReminder,
+} from '../components/admin/RemindPanel'
 
 type Tab = 'posts' | 'hours' | 'fundraisers' | 'absences' | 'members' | 'settings'
 
@@ -221,6 +227,44 @@ function PostsTab() {
     void load()
   }, [load])
 
+  // Latest reminder per event, and which event's Remind form is open.
+  const [reminders, setReminders] = useState<Record<string, EventReminder>>({})
+  const [reminding, setReminding] = useState<string | null>(null)
+
+  const loadReminders = useCallback(async () => {
+    const { data } = await supabase
+      .from('event_reminders')
+      .select('*')
+      .order('requested_at', { ascending: false })
+      .limit(200)
+    const latest: Record<string, EventReminder> = {}
+    for (const r of (data as EventReminder[]) ?? []) latest[r.post_id] ??= r
+    setReminders(latest)
+  }, [])
+
+  useEffect(() => {
+    void loadReminders()
+  }, [loadReminders])
+
+  // While one is waiting on the Apps Script, check back until it lands.
+  const inFlight = Object.values(reminders).some((r) => r.status === 'queued' || r.status === 'sending')
+  useEffect(() => {
+    if (!inFlight) return
+    const timer = window.setInterval(() => void loadReminders(), 10_000)
+    return () => window.clearInterval(timer)
+  }, [inFlight, loadReminders])
+
+  async function cancelReminder(r: EventReminder) {
+    await supabase.from('event_reminders').delete().eq('id', r.id).eq('status', 'queued')
+    await loadReminders()
+  }
+
+  /** Published events that haven't finished yet (or have no date yet). */
+  function canRemind(p: Post) {
+    if (p.category !== 'event' || !p.published) return false
+    return occurrences(p).length === 0 || upcomingDates(p).length > 0
+  }
+
   async function update(post: Post, patch: Partial<Post>) {
     await supabase.from('posts').update(patch).eq('id', post.id)
     await load()
@@ -263,8 +307,26 @@ function PostsTab() {
             <p className="text-xs muted">
               {formatDate(p.created_at)} · /{p.slug}
             </p>
+            {reminders[p.id] && (
+              <ReminderStatus
+                reminder={reminders[p.id]}
+                onCancel={() => void cancelReminder(reminders[p.id])}
+              />
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
+            {canRemind(p) && (
+              <button
+                type="button"
+                onClick={() => setReminding(reminding === p.id ? null : p.id)}
+                disabled={
+                  reminders[p.id]?.status === 'queued' || reminders[p.id]?.status === 'sending'
+                }
+                className="btn btn-ghost py-1 text-xs"
+              >
+                Remind
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void update(p, { pinned: !p.pinned })}
@@ -290,6 +352,16 @@ function PostsTab() {
               Delete
             </button>
           </div>
+          {reminding === p.id && (
+            <RemindPanel
+              post={p}
+              onClose={() => setReminding(null)}
+              onQueued={() => {
+                setReminding(null)
+                void loadReminders()
+              }}
+            />
+          )}
         </li>
       ))}
     </ul>
