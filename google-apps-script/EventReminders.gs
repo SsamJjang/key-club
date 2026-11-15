@@ -302,7 +302,7 @@ function erMailOptions_(mail, settings) {
 // ---------------------------------------------------------------------------
 
 var ER_NAVY = '#063b70';
-var ER_NAVY_2 = '#0a4a87';
+var ER_LINE = '#dfe6ec';
 var ER_GOLD = '#f4c400';
 var ER_INK = '#102b45';
 var ER_MUTED = '#71869a';
@@ -417,16 +417,14 @@ function erCircleLogo_(logo, size) {
     'display:inline-block;text-align:center;line-height:' + size + 'px;overflow:hidden;">' + inner + '</div>';
 }
 
-function erTile_(label, value, bg, last) {
-  return '<td width="33.33%" valign="top" style="background:' + bg + ';padding:22px 20px;' +
-    (last ? '' : 'border-right:2px solid #ffffff;') + '">' +
-    '<div style="font-size:10px;letter-spacing:2px;font-weight:900;color:' + ER_GOLD + ';">' + label + '</div>' +
-    '<div style="font-size:19px;line-height:1.25;font-weight:900;color:#ffffff;margin-top:9px;">' + erEsc_(value) + '</div>' +
-    '</td>';
-}
-
-function erPara_(html) {
-  return '<p style="font-size:16px;line-height:1.75;color:' + ER_BODY + ';margin:20px 0 0;">' + html + '</p>';
+function erRow_(label, value, last) {
+  var line = last ? '' : 'border-bottom:1px solid ' + ER_LINE + ';';
+  return '<tr>' +
+    '<td width="132" valign="top" style="padding:14px 0 14px 22px;' + line +
+    'font-size:11px;letter-spacing:2px;font-weight:900;color:' + ER_MUTED + ';">' + label + '</td>' +
+    '<td valign="top" style="padding:12px 22px 12px 0;' + line +
+    'font-size:16px;line-height:1.45;font-weight:700;color:' + ER_NAVY + ';">' + erEsc_(value) + '</td>' +
+    '</tr>';
 }
 
 function buildReminderEmail_(person, post, req, settings, logo) {
@@ -439,43 +437,48 @@ function buildReminderEmail_(person, post, req, settings, logo) {
   var cantGoLink = link ? link + '?cantgo=1' + (dateKey ? '&date=' + dateKey : '') : null;
   var title = erEsc_(post.title);
 
-  var whenText = '<b>' + erEsc_(when.long) + '</b>' + (when.start ? ' at <b>' + erEsc_(when.start) + '</b>' : '');
-  var where = post.location ? ' We’re meeting at <b>' + erEsc_(post.location) + '</b>.' : '';
-  var hoursLine = when.hours && when.hours !== 'TBA'
-    ? ' It counts for <b>' + erEsc_(when.hours) + '</b> of service.'
-    : '';
-  // "See you Friday!" reads like a person; "See you on November 20!" still works.
+  // One line of words, then every fact once, in the card below.
   var copy = signedUp
     ? {
         subject: 'See you ' + when.soon + ' at ' + post.title,
         headline: 'See you ' + erEsc_(when.soon) + '!',
-        intro: 'Just a heads up that you signed up for <b>' + title + '</b>. It’s ' + whenText + '.' +
-          where + ' Thanks so much for helping out, we really appreciate it.',
+        intro: 'You’re signed up for <b>' + title + '</b>. Here’s everything you need.',
         buttons: [
           { label: 'VIEW EVENT', href: link, primary: true },
           { label: 'I CAN’T GO', href: cantGoLink, primary: false },
         ],
-        after: 'If something came up, no worries. Tap <b>I can’t go</b> and your spot opens up for someone else.',
+        after: 'Plans changed? Tap <b>I can’t go</b> so someone else can take your spot.',
+        signoff: 'Thanks for helping out!',
       }
     : {
         subject: post.title + ' is ' + when.soon + '. Can you make it?',
         headline: when.soon === 'soon' ? 'Can you make it?' : 'Can you make it ' + erEsc_(when.soon) + '?',
-        intro: 'We’re doing <b>' + title + '</b> on ' + whenText +
-          ' and we’d love to have you there.' + where + hoursLine,
+        intro: 'There’s still room at <b>' + title + '</b>, and we’d love to have you there.',
         buttons: [{ label: 'SIGN UP', href: link, primary: true }],
         after: 'Spots can fill up, so grab one soon if you’re free.',
+        signoff: 'Hope to see you there!',
       };
 
-  var note = req.note
-    ? '<tr><td style="padding:26px 46px 0;">' +
-      '<div style="border-left:4px solid ' + ER_GOLD + ';background:#f6f8fa;padding:16px 20px;">' +
-      '<div style="font-size:11px;letter-spacing:2px;font-weight:900;color:' + ER_MUTED + ';">A NOTE FROM THE OFFICERS</div>' +
-      '<div style="font-size:16px;line-height:1.7;color:' + ER_INK + ';margin-top:6px;">' +
-      erEsc_(req.note).replace(/\n/g, '<br>') + '</div></div></td></tr>'
-    : '';
+  var details = [
+    ['EVENT', post.title],
+    ['DATE', when.long.charAt(0).toUpperCase() + when.long.slice(1)],
+    ['TIME', when.timeTile],
+  ];
+  if (post.location) details.push(['WHERE', post.location]);
+  if (when.hours) details.push(['SERVICE HOURS', when.hours]);
+  var card =
+    '<tr><td style="padding:28px 46px 0;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+    'style="border:1px solid ' + ER_LINE + ';border-top:4px solid ' + ER_NAVY + ';background:#fbfcfd;">' +
+    details.map(function (d, i) { return erRow_(d[0], d[1], i === details.length - 1); }).join('') +
+    '</table></td></tr>';
 
-  var summary = post.summary
-    ? '<tr><td style="padding:0 46px;">' + erPara_(erEsc_(post.summary)) + '</td></tr>'
+  var note = req.note
+    ? '<tr><td style="padding:18px 46px 0;">' +
+      '<div style="border-left:4px solid ' + ER_GOLD + ';background:#f6f8fa;padding:14px 20px;">' +
+      '<div style="font-size:11px;letter-spacing:2px;font-weight:900;color:' + ER_MUTED + ';">NOTE FROM THE OFFICERS</div>' +
+      '<div style="font-size:16px;line-height:1.6;color:' + ER_INK + ';margin-top:6px;">' +
+      erEsc_(req.note).replace(/\n/g, '<br>') + '</div></div></td></tr>'
     : '';
 
   // Side by side: navy for the main action, outlined for "I can't go".
@@ -487,76 +490,63 @@ function buildReminderEmail_(person, post, req, settings, logo) {
       '<a href="' + erEsc_(b.href) + '" style="display:inline-block;' + style + 'text-decoration:none;' +
       'padding:12px 24px;font-size:13px;letter-spacing:2px;font-weight:900;">' + b.label + '</a></td>';
   }).join('');
-  var button = buttonCells
-    ? '<tr><td style="padding:30px 46px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
-      buttonCells + '</tr></table></td></tr>'
+  var buttons = buttonCells
+    ? '<tr><td style="padding:28px 46px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
+      buttonCells + '</tr></table>' +
+      '<div style="font-size:14px;line-height:1.6;color:' + ER_MUTED + ';margin-top:12px;">' + copy.after + '</div>' +
+      '</td></tr>'
     : '';
 
-  var after = copy.after
-    ? '<tr><td style="padding:6px 46px 0;">' + erPara_(copy.after) + '</td></tr>'
-    : '';
+  var signoff =
+    '<tr><td style="padding:30px 46px 0;font-size:16px;line-height:1.6;color:' + ER_BODY + ';">' +
+    copy.signoff + '<br><b style="color:' + ER_NAVY + ';">GCS Key Club</b></td></tr>';
 
   var html =
     '<div style="margin:0;padding:0;background:#e8edf2;font-family:Arial,Helvetica,sans-serif;color:' + ER_INK + ';">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e8edf2;">' +
     '<tr><td align="center" style="padding:28px 10px 40px;">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
-    'style="max-width:760px;background:#ffffff;border-collapse:collapse;">' +
+    'style="max-width:680px;background:#ffffff;border-collapse:collapse;">' +
 
     '<tr><td style="height:9px;background:' + ER_GOLD + ';font-size:0;line-height:0;">&nbsp;</td></tr>' +
 
     // Hero
-    '<tr><td style="background:' + ER_NAVY + ';padding:34px 42px 40px;">' +
+    '<tr><td style="background:' + ER_NAVY + ';padding:30px 42px 34px;">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
-    '<td valign="middle" width="152">' + erCircleLogo_(logo, 128) + '</td>' +
-    '<td valign="middle" style="padding-left:24px;">' +
+    '<td valign="middle" width="124">' + erCircleLogo_(logo, 104) + '</td>' +
+    '<td valign="middle" style="padding-left:22px;">' +
     '<div style="font-size:11px;letter-spacing:3.5px;font-weight:800;color:' + ER_GOLD +
-    ';text-transform:uppercase;margin-bottom:10px;">GCS KEY CLUB · ' + erEsc_(when.short).toUpperCase() + '</div>' +
-    '<div style="font-size:38px;line-height:1.02;font-weight:900;color:#ffffff;letter-spacing:-1px;">EVENT<br>REMINDER</div>' +
-    '<div style="font-size:14px;line-height:1.5;color:#d8e5ef;margin-top:14px;">Caring: Our Way of Life</div>' +
+    ';text-transform:uppercase;margin-bottom:10px;">GCS KEY CLUB</div>' +
+    '<div style="font-size:34px;line-height:1.02;font-weight:900;color:#ffffff;letter-spacing:-1px;">EVENT<br>REMINDER</div>' +
     '</td></tr></table></td></tr>' +
 
     '<tr><td style="background:' + ER_GOLD + ';padding:12px 42px;">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
     '<td style="font-size:12px;font-weight:900;letter-spacing:2.5px;color:' + ER_NAVY + ';text-transform:uppercase;">' +
-    (signedUp ? 'YOU’RE SIGNED UP' : 'KEY CLUB') + '</td>' +
-    '<td align="right" style="font-size:12px;font-weight:900;color:' + ER_NAVY + ';">GAONNURI CHRISTIAN SCHOOL</td>' +
+    (signedUp ? 'YOU’RE SIGNED UP' : 'SPOTS OPEN') + '</td>' +
+    '<td align="right" style="font-size:12px;font-weight:900;color:' + ER_NAVY + ';">' +
+    erEsc_(when.short).toUpperCase() + '</td>' +
     '</tr></table></td></tr>' +
 
-    // Greeting, headline, intro
-    '<tr><td style="padding:42px 46px 8px;">' +
+    // Greeting, headline, one line
+    '<tr><td style="padding:38px 46px 0;">' +
     '<div style="font-size:14px;letter-spacing:2px;font-weight:800;color:' + ER_MUTED + ';text-transform:uppercase;">Hi ' +
     erEsc_(firstName) + ',</div>' +
-    '<div style="font-size:34px;line-height:1.12;font-weight:900;color:' + ER_NAVY + ';margin-top:8px;">' + copy.headline + '</div>' +
-    '<div style="height:4px;width:58px;background:' + ER_GOLD + ';margin-top:18px;"></div>' +
-    erPara_(copy.intro) +
+    '<div style="font-size:32px;line-height:1.12;font-weight:900;color:' + ER_NAVY + ';margin-top:8px;">' + copy.headline + '</div>' +
+    '<div style="height:4px;width:58px;background:' + ER_GOLD + ';margin-top:16px;"></div>' +
+    '<p style="font-size:16px;line-height:1.65;color:' + ER_BODY + ';margin:18px 0 0;">' + copy.intro + '</p>' +
     '</td></tr>' +
 
-    // Date / time / hours
-    '<tr><td style="padding:28px 46px 0;">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
-    erTile_('DATE', when.short, ER_NAVY, false) +
-    erTile_('TIME', when.timeTile, ER_NAVY_2, false) +
-    erTile_('SERVICE HOURS', when.hours || 'None', ER_NAVY, true) +
-    '</tr></table></td></tr>' +
-
-    (post.location
-      ? '<tr><td style="padding:14px 46px 0;font-size:14px;color:' + ER_MUTED + ';">' +
-        '<b style="letter-spacing:2px;font-size:11px;">WHERE</b>&nbsp;&nbsp;' + erEsc_(post.location) + '</td></tr>'
-      : '') +
-
-    note + summary + button + after +
-    '<tr><td style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>' +
+    card + note + buttons + signoff +
+    '<tr><td style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>' +
 
     // Footer
-    '<tr><td style="background:' + ER_NAVY + ';padding:28px 46px;">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle">' +
-    '<div style="font-size:13px;letter-spacing:2.5px;font-weight:900;color:' + ER_GOLD + ';">' +
+    '<tr><td style="background:' + ER_NAVY + ';padding:24px 46px;">' +
+    '<div style="font-size:12px;letter-spacing:2.5px;font-weight:900;color:' + ER_GOLD + ';">' +
     'LEADERSHIP • CHARACTER BUILDING • CARING • INCLUSIVENESS</div>' +
     '<div style="font-size:12px;line-height:1.5;color:#c6d7e4;margin-top:8px;">' +
     'GAONNURI CHRISTIAN SCHOOL • KEY CLUB INTERNATIONAL</div>' +
-    '</td><td align="right" valign="middle" width="76" style="padding-left:16px;">' + erCircleLogo_(logo, 60) +
-    '</td></tr></table></td></tr>' +
+    '</td></tr>' +
 
     '</table></td></tr></table></div>';
 
@@ -566,18 +556,14 @@ function buildReminderEmail_(person, post, req, settings, logo) {
   };
   var text =
     'Hi ' + firstName + ',\n\n' +
-    plain(copy.headline) + '\n\n' +
-    plain(copy.intro) + '\n\n' +
-    'Date: ' + when.long + '\n' +
-    'Time: ' + when.timeTile + '\n' +
-    (post.location ? 'Where: ' + post.location + '\n' : '') +
-    'Service hours: ' + (when.hours || 'none') + '\n' +
-    (req.note ? '\nA note from the officers:\n' + req.note + '\n' : '') +
-    (post.summary ? '\n' + post.summary + '\n' : '') +
+    plain(copy.headline) + ' ' + plain(copy.intro) + '\n\n' +
+    details.map(function (d) {
+      return d[0].charAt(0) + d[0].slice(1).toLowerCase() + ': ' + d[1];
+    }).join('\n') + '\n' +
+    (req.note ? '\nNote from the officers: ' + req.note + '\n' : '') +
     (link ? '\n' + (signedUp ? 'View the event: ' : 'Sign up: ') + link + '\n' : '') +
-    (signedUp && cantGoLink ? 'Can’t go? ' + cantGoLink + '\n' : '') +
-    (copy.after ? '\n' + plain(copy.after) + '\n' : '') +
-    '\nGaonnuri Christian School • Key Club International\n';
+    (signedUp && cantGoLink ? "Can't go? " + cantGoLink + '\n' : '') +
+    '\n' + plain(copy.signoff) + '\nGCS Key Club\n';
 
   var mail = { subject: copy.subject, html: html, text: text };
   if (logo && logo.blob) mail.inlineImages = { keyclubLogo: logo.blob };
