@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GCS Key Club · Scroll Lab</title>
+<link rel="icon" href="./logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /*
+   * Scroll Lab: a test of a scroll-driven home page for the Key Club site.
+   * Not wired into the app. Every scene is a tall section with a sticky
+   * stage inside; one rAF loop turns "how far through this section" into a
+   * 0..1 number (--p) and everything animates off that.
+   */
+  :root {
+    --navy-950: #050e1d;
+    --navy-900: #0a1a33;
+    --navy-800: #102a4f;
+    --navy-700: #183b6e;
+    --navy-500: #2b5fa8;
+    --gold: #e5ad2c;
+    --gold-hi: #f6d47a;
+    --ivory: #f7f3ea;
+    --ink-soft: #9fb0c8;
+    --line: rgb(255 255 255 / 0.1);
+    --serif: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: auto; }
+  body {
+    margin: 0;
+    background: var(--navy-950);
+    color: var(--ivory);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; }
+
+  /* Film grain, very faint: keeps the big flat navy from looking cheap. */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 100;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- chrome ---------- */
+  .progress {
+    position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 50;
+    background: linear-gradient(90deg, var(--gold), var(--gold-hi));
+    transform-origin: 0 50%;
+    transform: scaleX(var(--total, 0));
+  }
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px clamp(16px, 4vw, 48px);
+    transition: background .4s, border-color .4s, backdrop-filter .4s;
+    border-bottom: 1px solid transparent;
+  }
+  .nav.solid {
+    background: rgb(5 14 29 / 0.72);
+    backdrop-filter: blur(14px);
+    border-bottom-color: var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .02em; text-decoration: none; }
+  .brand img { width: 30px; height: 30px; filter: invert(1); }
+  .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--ink-soft); }
+  .nav-links a { text-decoration: none; transition: color .2s; }
+  .nav-links a:hover { color: var(--ivory); }
+  .nav-cta {
+    font-size: 13px; font-weight: 600; letter-spacing: .04em;
+    padding: 9px 16px; border-radius: 999px;
+    border: 1px solid rgb(229 173 44 / 0.5); color: var(--gold-hi); text-decoration: none;
+  }
+  @media (max-width: 720px) { .nav-links { display: none; } }
+
+  .eyebrow {
+    font-size: 12px; letter-spacing: .32em; text-transform: uppercase;
+    color: var(--gold); font-weight: 600;
+  }
+
+  /* ---------- scenes ---------- */
+  .scene { position: relative; }
+  .stage {
+    position: sticky; top: 0; height: 100vh; height: 100svh;
+    overflow: hidden;
+  }
+
+  /* 1. Hero: the seal shrinks and turns, a gold ring draws, the motto
+     comes in from both sides. */
+  #hero { height: 320vh; }
+  #hero .stage {
+    display: grid; place-items: center;
+    background:
+      radial-gradient(60% 50% at 50% 45%, rgb(43 95 168 / 0.35), transparent 70%),
+      var(--navy-950);
+  }
+  .seal-wrap {
+    position: absolute; left: 50%; top: 50%;
+    width: min(46vmin, 440px); aspect-ratio: 1;
+    transform:
+      translate(-50%, calc(-50% - 14vh - var(--p) * 6vh))
+      scale(calc(1 - var(--p) * 0.45))
+      rotate(calc(var(--p) * 140deg));
+    will-change: transform;
+  }
+  .seal-wrap img {
+    position: absolute; inset: 14%; width: 72%; height: 72%;
+    filter: invert(1); opacity: calc(0.92 - var(--p) * 0.2);
+  }
+  .ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .ring circle {
+    fill: none; stroke: url(#goldStroke); stroke-width: 1.2;
+    stroke-dasharray: 1; stroke-dashoffset: calc(1 - min(1, var(--p) * 1.6));
+    stroke-linecap: round;
+  }
+  .ring .ticks { stroke: rgb(229 173 44 / 0.35); stroke-width: .5; stroke-dasharray: .4 2.2; }
+
+  .hero-title {
+    position: relative; z-index: 2; text-align: center;
+    margin-top: 44vh;
+    opacity: calc(1 - var(--p) * 2.4);
+    transform: translateY(calc(var(--p) * -60px));
+  }
+  .hero-title h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(44px, 8vw, 112px); line-height: .95; letter-spacing: -.02em;
+    margin: 14px 0 0;
+  }
+  .hero-title h1 em { font-style: italic; font-weight: 400; color: var(--gold-hi); }
+
+  .motto {
+    position: absolute; left: 0; right: 0; top: 60%;
+    z-index: 2; text-align: center; pointer-events: none;
+    font-family: var(--serif);
+    font-size: clamp(40px, 7.4vw, 104px); line-height: 1; letter-spacing: -.02em;
+  }
+  .motto span { display: block; will-change: transform, opacity; }
+  .motto .l {
+    --k: clamp(0, (var(--p) - .35) / .35, 1);
+    transform: translateX(calc((1 - var(--k)) * -40vw)); opacity: var(--k);
+  }
+  .motto .r {
+    --k: clamp(0, (var(--p) - .45) / .35, 1);
+    transform: translateX(calc((1 - var(--k)) * 40vw)); opacity: var(--k);
+    font-style: italic; color: var(--gold-hi);
+  }
+  .scroll-cue {
+    position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--ink-soft);
+    opacity: calc(1 - var(--p) * 8);
+  }
+  .scroll-cue i {
+    width: 1px; height: 46px;
+    background: linear-gradient(var(--gold), transparent);
+    animation: drip 2.2s ease-in-out infinite;
+    transform-origin: top;
+  }
+  @keyframes drip { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+  /* 2. Manifesto: words light up as you read down. */
+  #manifesto { height: 260vh; }
+  #manifesto .stage {
+    display: grid; place-items: center; padding: 0 clamp(16px, 8vw, 140px);
+    background: var(--navy-950);
+  }
+  .manifesto-text {
+    max-width: 1100px;
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(28px, 4.4vw, 60px); line-height: 1.18; letter-spacing: -.01em;
+  }
+  .manifesto-text .w {
+    opacity: .14; transition: opacity .25s linear, color .25s linear;
+  }
+  .manifesto-text .w.on { opacity: 1; }
+  .manifesto-text .w.gold.on { color: var(--gold-hi); font-style: italic; }
+  .manifesto-text .eyebrow { display: block; margin-bottom: 28px; font-family: var(--sans); }
+
+  /* 3. Numbers: count up when they come into view. */
+  .numbers {
+    padding: clamp(90px, 14vh, 160px) clamp(16px, 6vw, 80px);
+    background: linear-gradient(var(--navy-950), var(--navy-900));
+    border-top: 1px solid var(--line);
+  }
+  .numbers-grid {
+    max-width: 1200px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  }
+  .stat { padding: 8px 28px; border-left: 1px solid var(--line); }
+  .stat:first-child { border-left: 0; padding-left: 0; }
+  .stat b {
+    display: block; font-family: var(--serif); font-weight: 600;
+    font-size: clamp(48px, 6vw, 84px); letter-spacing: -.03em; line-height: 1;
+    background: linear-gradient(180deg, var(--ivory) 30%, #c9d4e4);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stat b sup { font-size: .4em; color: var(--gold); -webkit-text-fill-color: var(--gold); vertical-align: top; margin-left: 2px; }
+  .stat span { display: block; margin-top: 14px; color: var(--ink-soft); font-size: 15px; line-height: 1.5; }
+  .sample-note { max-width: 1200px; margin: 40px auto 0; font-size: 12px; color: #5d6f8c; }
+  @media (max-width: 820px) {
+    .numbers-grid { grid-template-columns: 1fr 1fr; row-gap: 48px; }
+    .stat:nth-child(3) { border-left: 0; padding-left: 0; }
+  }
+
+  /* 4. Pillars: vertical scroll moves the cards sideways. */
+  #pillars { height: 420vh; }
+  #pillars .stage { background: var(--navy-900); display: flex; flex-direction: column; justify-content: center; }
+  .pillars-head {
+    padding: 0 clamp(16px, 6vw, 80px); margin-bottom: 44px;
+    display: flex; align-items: end; justify-content: space-between; gap: 24px;
+  }
+  .pillars-head h2 {
+    font-family: var(--serif); font-weight: 600; margin: 12px 0 0;
+    font-size: clamp(34px, 4.6vw, 64px); letter-spacing: -.02em; line-height: 1;
+  }
+  .pillar-count { font-family: var(--serif); font-size: 20px; color: var(--ink-soft); white-space: nowrap; }
+  .pillar-count b { color: var(--gold-hi); font-weight: 600; }
+  .track {
+    display: flex; gap: 28px; padding: 0 clamp(16px, 6vw, 80px);
+    width: max-content; will-change: transform;
+  }
+  .pillar {
+    position: relative; overflow: hidden;
+    width: min(78vw, 560px); height: min(56vh, 460px);
+    border-radius: 22px; padding: 36px;
+    background: linear-gradient(160deg, var(--navy-800), var(--navy-950));
+    border: 1px solid var(--line);
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .pillar::before {
+    content: ''; position: absolute; inset: auto -30% -50% auto; width: 80%; aspect-ratio: 1;
+    border-radius: 50%; background: radial-gradient(rgb(229 173 44 / 0.22), transparent 65%);
+  }
+  .pillar .num { font-family: var(--serif); font-size: 15px; color: var(--gold); letter-spacing: .1em; }
+  .pillar h3 {
+    font-family: var(--serif); font-weight: 600; margin: 0;
+    font-size: clamp(34px, 4vw, 54px); line-height: 1.02; letter-spacing: -.02em;
+  }
+  .pillar p { margin: 16px 0 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; max-width: 40ch; }
+  .pillar.end {
+    background: none; border: 1px dashed rgb(229 173 44 / 0.35);
+    justify-content: center; align-items: flex-start;
+  }
+  .pillar.end h3 { font-style: italic; font-weight: 400; color: var(--gold-hi); }
+
+  /* 5. Events: cards rise in, one after another. */
+  .events {
+    padding: clamp(100px, 16vh, 180px) clamp(16px, 6vw, 80px);
+    background: var(--ivory); color: var(--navy-900);
+  }
+  .events-head { max-width: 1200px; margin: 0 auto 56px; }
+  .events-head h2 {
+    font-family: var(--serif); font-weight: 600; margin: 12px 0 0;
+    font-size: clamp(36px, 5vw, 72px); letter-spacing: -.02em; line-height: 1;
+  }
+  .events-head .eyebrow { color: #a2700c; }
+  .event-grid {
+    max-width: 1200px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+  }
+  @media (max-width: 900px) { .event-grid { grid-template-columns: 1fr; } }
+  .event {
+    background: #fff; border-radius: 18px; padding: 28px;
+    border: 1px solid #e6e0d2;
+    box-shadow: 0 30px 60px -40px rgb(15 35 64 / 0.45);
+    display: flex; flex-direction: column; gap: 18px; min-height: 260px;
+  }
+  .event .date {
+    display: flex; align-items: baseline; gap: 10px;
+    font-family: var(--serif); color: var(--navy-700);
+  }
+  .event .date b { font-size: 54px; line-height: 1; font-weight: 600; }
+  .event .date span { font-size: 14px; letter-spacing: .2em; text-transform: uppercase; color: #8a7a58; font-family: var(--sans); font-weight: 600; }
+  .event h3 { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.15; margin: 0; }
+  .event .meta { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #5b6578; }
+  .event .hrs { background: var(--navy-900); color: var(--gold-hi); font-weight: 600; font-size: 12px; letter-spacing: .08em; padding: 7px 12px; border-radius: 999px; }
+
+  /* pop-in: anything with .reveal rises and fades in once, staggered by --i */
+  .reveal {
+    opacity: 0; transform: translateY(40px) scale(.98);
+    transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);
+    transition-delay: calc(var(--i, 0) * 110ms);
+  }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* 6. Join: the headline fills with gold as you scroll to the end. */
+  #join { height: 200vh; }
+  #join .stage {
+    display: grid; place-items: center; text-align: center;
+    background: radial-gradient(70% 60% at 50% 60%, rgb(43 95 168 / 0.3), transparent 70%), var(--navy-950);
+    padding: 0 16px;
+  }
+  .join-title {
+    font-family: var(--serif); font-weight: 600; margin: 18px 0 0;
+    font-size: clamp(54px, 11vw, 170px); line-height: .9; letter-spacing: -.03em;
+    background:
+      linear-gradient(90deg, var(--gold-hi), var(--gold)) 0 0 / calc(var(--p) * 140%) 100% no-repeat,
+      linear-gradient(rgb(247 243 234 / 0.16), rgb(247 243 234 / 0.16));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .join-sub { color: var(--ink-soft); font-size: 18px; margin: 26px auto 0; max-width: 46ch; line-height: 1.6;
+    opacity: clamp(0, (var(--p) - .5) * 3, 1); }
+  .join-actions { margin-top: 36px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    opacity: clamp(0, (var(--p) - .6) * 3, 1);
+    transform: translateY(calc((1 - clamp(0, (var(--p) - .6) * 3, 1)) * 20px)); }
+  .btn {
+    display: inline-block; padding: 15px 26px; border-radius: 999px; text-decoration: none;
+    font-weight: 600; font-size: 15px; letter-spacing: .01em;
+  }
+  .btn.gold { background: linear-gradient(135deg, #fbe7a8, #f2c860 45%, #d9a22a); color: #2a1d05; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--ivory); }
+
+  footer {
+    padding: 40px clamp(16px, 6vw, 80px); background: var(--navy-950);
+    border-top: 1px solid var(--line); color: #5d6f8c; font-size: 13px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+
+  /* Reduced motion: no scrubbing, no pinning tricks, everything just visible. */
+  @media (prefers-reduced-motion: reduce) {
+    #hero, #manifesto, #pillars, #join { height: auto; }
+    .stage { position: relative; height: auto; min-height: 100vh; padding: 120px 0; }
+    .seal-wrap, .hero-title, .motto span, .scroll-cue, .join-sub, .join-actions { transform: none !important; opacity: 1 !important; }
+    .motto { position: relative; top: auto; margin-top: 40px; }
+    .seal-wrap { position: relative; left: auto; top: auto; margin: 0 auto; }
+    .manifesto-text .w { opacity: 1; }
+    .track { flex-wrap: wrap; width: auto; transform: none !important; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .join-title { background: linear-gradient(90deg, var(--gold-hi), var(--gold)); -webkit-background-clip: text; background-clip: text; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<nav class="nav" id="nav">
+  <a class="brand" href="#hero"><img src="./logo.svg" alt="" />GCS Key Club</a>
+  <div class="nav-links">
+    <a href="#manifesto">About</a>
+    <a href="#pillars">Pillars</a>
+    <a href="#events">Events</a>
+  </div>
+  <a class="nav-cta" href="#join">Sign in</a>
+</nav>
+
+<!-- 1. Hero -->
+<section class="scene" id="hero" data-scene>
+  <div class="stage">
+    <div class="seal-wrap">
+      <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="goldStroke" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#f6d47a" /><stop offset="1" stop-color="#c98f12" />
+          </linearGradient>
+        </defs>
+        <circle class="ticks" cx="50" cy="50" r="49" pathLength="1" style="stroke-dashoffset:0" />
+        <circle cx="50" cy="50" r="46" pathLength="1" transform="rotate(-90 50 50)" />
+      </svg>
+      <img src="./logo.svg" alt="Key Club seal" />
+    </div>
+
+    <div class="hero-title">
+      <div class="eyebrow">Gaonnuri Christian School</div>
+      <h1>Key Club, <em>since day one.</em></h1>
+    </div>
+
+    <div class="motto" aria-label="Caring, our way of life">
+      <span class="l">Caring,</span>
+      <span class="r">our way of life.</span>
+    </div>
+
+    <div class="scroll-cue">Scroll<i></i></div>
+  </div>
+</section>
+
+<!-- 2. Manifesto -->
+<section class="scene" id="manifesto" data-scene>
+  <div class="stage">
+    <p class="manifesto-text" id="manifestoText">
+      <span class="eyebrow">Who we are</span>
+      <!-- words are split by the script; *word* turns gold -->
+      We are students who *show* *up.* For our school, our city, and each other. Every hour we give is a promise kept, and every promise kept makes Songdo a little *kinder.*
+    </p>
+  </div>
+</section>
+
+<!-- 3. Numbers -->
+<section class="numbers" id="numbers">
+  <div class="numbers-grid">
+    <div class="stat reveal" style="--i:0"><b data-count="2480">0</b><span>Service hours given this year</span></div>
+    <div class="stat reveal" style="--i:1"><b data-count="86">0</b><span>Active members across four grades</span></div>
+    <div class="stat reveal" style="--i:2"><b data-count="42">0</b><span>Events run since September</span></div>
+    <div class="stat reveal" style="--i:3"><b data-count="11" data-suffix="+">0</b><span>Partner organizations in Incheon</span></div>
+  </div>
+  <p class="sample-note">Sample figures for the test page. The real page would read them from the database.</p>
+</section>
+
+<!-- 4. Pillars -->
+<section class="scene" id="pillars" data-scene>
+  <div class="stage">
+    <div class="pillars-head">
+      <div>
+        <div class="eyebrow">Four core values</div>
+        <h2>What we stand on.</h2>
+      </div>
+      <div class="pillar-count"><b id="pillarNow">01</b> / 04</div>
+    </div>
+    <div class="track" id="track">
+      <article class="pillar">
+        <div class="num">01</div>
+        <div><h3>Leadership</h3><p>Officers plan it, members run it. Every event is someone’s first time leading something real.</p></div>
+      </article>
+      <article class="pillar">
+        <div class="num">02</div>
+        <div><h3>Character Building</h3><p>Showing up when you said you would. Doing the unglamorous part well. That is the whole lesson.</p></div>
+      </article>
+      <article class="pillar">
+        <div class="num">03</div>
+        <div><h3>Caring</h3><p>Food banks, tutoring, concerts, clean streets. The work changes; the reason for it doesn’t.</p></div>
+      </article>
+      <article class="pillar">
+        <div class="num">04</div>
+        <div><h3>Inclusiveness</h3><p>Every grade, every background, every schedule. There is a place on the sign-up sheet for you.</p></div>
+      </article>
+      <article class="pillar end">
+        <h3>Your turn.</h3>
+        <p>Scroll on to see what’s coming up.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Events -->
+<section class="events" id="events">
+  <div class="events-head reveal">
+    <div class="eyebrow">Coming up</div>
+    <h2>Where you’ll find us.</h2>
+  </div>
+  <div class="event-grid">
+    <article class="event reveal" style="--i:0">
+      <div class="date"><b>20</b><span>Nov · Fri</span></div>
+      <h3>GCS Concert Preparation Ushering</h3>
+      <div class="meta"><span>Yeonsu-gu Office</span><span class="hrs">1 HR</span></div>
+    </article>
+    <article class="event reveal" style="--i:1">
+      <div class="date"><b>28</b><span>Nov · Sat</span></div>
+      <h3>Songdo Central Park Cleanup</h3>
+      <div class="meta"><span>Central Park, East Gate</span><span class="hrs">2 HRS</span></div>
+    </article>
+    <article class="event reveal" style="--i:2">
+      <div class="date"><b>05</b><span>Dec · Sat</span></div>
+      <h3>Winter Food Bank Sorting</h3>
+      <div class="meta"><span>Incheon Food Bank</span><span class="hrs">3 HRS</span></div>
+    </article>
+  </div>
+</section>
+
+<!-- 6. Join -->
+<section class="scene" id="join" data-scene>
+  <div class="stage">
+    <div>
+      <div class="eyebrow">Members</div>
+      <h2 class="join-title">Show up.</h2>
+      <p class="join-sub">Sign in with your school Google account to see your hours, sign up for events, and find your people.</p>
+      <div class="join-actions">
+        <a class="btn gold" href="#hero">Sign in with Google</a>
+        <a class="btn ghost" href="#events">See all events</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Leadership · Character Building · Caring · Inclusiveness</span>
+  <span>Gaonnuri Christian School · Key Club International</span>
+</footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const root = document.documentElement
+  const nav = document.getElementById('nav')
+  const scenes = [...document.querySelectorAll('[data-scene]')]
+
+  // Manifesto: wrap each word so it can light up on its own.
+  const text = document.getElementById('manifestoText')
+  const eyebrow = text.querySelector('.eyebrow')
+  const raw = text.lastChild.textContent.trim().split(/\s+/)
+  text.lastChild.remove()
+  const words = raw.map((w) => {
+    const gold = /^\*.*\*$/.test(w)
+    const s = document.createElement('span')
+    s.className = 'w' + (gold ? ' gold' : '')
+    s.textContent = gold ? w.slice(1, -1) : w
+    return s
+  })
+  words.forEach((s, i) => { text.append(s); if (i < words.length - 1) text.append(' ') })
+
+  const track = document.getElementById('track')
+  const pillarNow = document.getElementById('pillarNow')
+
+  /** 0 when the section's top reaches the top of the screen, 1 when its stage is about to scroll away. */
+  function progress(el) {
+    const r = el.getBoundingClientRect()
+    const run = el.offsetHeight - innerHeight
+    return run > 0 ? Math.min(1, Math.max(0, -r.top / run)) : 0
+  }
+
+  let ticking = false
+  function frame() {
+    ticking = false
+    const max = document.documentElement.scrollHeight - innerHeight
+    root.style.setProperty('--total', (scrollY / max).toFixed(4))
+    nav.classList.toggle('solid', scrollY > innerHeight * 0.6)
+    if (reduce) return
+
+    for (const el of scenes) {
+      const p = progress(el)
+      el.style.setProperty('--p', p.toFixed(4))
+
+      if (el.id === 'manifesto') {
+        // Leave a little runway at both ends so the first and last words get a beat.
+        const lit = Math.round(((p - 0.08) / 0.8) * words.length)
+        words.forEach((w, i) => w.classList.toggle('on', i < lit))
+      }
+      if (el.id === 'pillars') {
+        const distance = track.scrollWidth - innerWidth
+        track.style.transform = `translate3d(${-p * distance}px,0,0)`
+        // Five cards slide past; the counter follows whichever is centred.
+        pillarNow.textContent = '0' + Math.min(4, 1 + Math.round(p * 4))
+      }
+    }
+  }
+  function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(frame) } }
+  addEventListener('scroll', onScroll, { passive: true })
+  addEventListener('resize', onScroll)
+  frame()
+
+  // Pop-ins and count-ups: once each, when they come into view.
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue
+      e.target.classList.add('in')
+      e.target.querySelectorAll('[data-count]').forEach(countUp)
+      io.unobserve(e.target)
+    }
+  }, { threshold: 0.25 })
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el))
+
+  function countUp(el) {
+    const end = Number(el.dataset.count)
+    const suffix = el.dataset.suffix ? `<sup>${el.dataset.suffix}</sup>` : ''
+    if (reduce) { el.innerHTML = end.toLocaleString() + suffix; return }
+    const start = performance.now(), dur = 1600
+    const step = (t) => {
+      const k = Math.min(1, (t - start) / dur)
+      const eased = 1 - Math.pow(1 - k, 4)
+      el.innerHTML = Math.round(end * eased).toLocaleString() + suffix
+      if (k < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+})()
+</script>
+</body>
+</html>

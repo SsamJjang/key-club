@@ -57,7 +57,7 @@ export default function News() {
       <PageHeader
         eyebrow="The feed"
         title="News & notices"
-        subtitle="GCS Key Club events, activities, and loving heart at a glance."
+        subtitle="GCS Key Club events, activities, and loving hearts at a glance."
       />
 
       <div className="mb-8 flex flex-wrap items-center gap-3">
